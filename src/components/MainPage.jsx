@@ -485,7 +485,7 @@ export default function MainPage() {
                 <Target className="w-6 h-6 text-green-400" />
               </div>
               <div>
-                <p className="text-sm text-white/40">Passing rate</p>
+                <p className="text-sm text-white/40">Passing</p>
                 <p className="text-2xl font-bold text-white">{Math.round(stats?.accuracy || 0)}%</p>
               </div>
             </div>
