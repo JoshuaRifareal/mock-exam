@@ -38,15 +38,29 @@ export default function Quiz() {
     if (questionRef.current && containerRef.current) {
       const adjustFontSize = () => {
         const containerHeight = containerRef.current.clientHeight;
+        const containerWidth = containerRef.current.clientWidth;
         const textLength = currentQuestion?.question?.length || 0;
         
-        let size = 3.5;
-        if (textLength > 100) size = 2.2;
-        else if (textLength > 70) size = 2.6;
+        // Base size based on text length
+        let size = 3.5; // rem
+        if (textLength > 150) size = 1.8;
+        else if (textLength > 120) size = 2.0;
+        else if (textLength > 100) size = 2.2;
+        else if (textLength > 80) size = 2.5;
+        else if (textLength > 60) size = 2.8;
         else if (textLength > 40) size = 3.0;
         
-        const clampedSize = Math.min(size, containerHeight / 10);
-        setQuestionFontSize(`${Math.max(clampedSize, 1.5)}rem`);
+        // Adjust for mobile (narrower screens)
+        if (containerWidth < 480) {
+          size = size * 0.85; // 15% smaller on mobile
+        } else if (containerWidth < 768) {
+          size = size * 0.92; // 8% smaller on tablet
+        }
+        
+        // Clamp to ensure it fits without truncation
+        const maxSize = containerHeight / 6; // Allow more lines
+        const clampedSize = Math.min(size, maxSize);
+        setQuestionFontSize(`${Math.max(clampedSize, 1.2)}rem`);
       };
       
       adjustFontSize();
@@ -286,10 +300,10 @@ export default function Quiz() {
         </div>
 
         {/* Question Area - 50% with dynamic font */}
-        <div 
-          ref={containerRef}
-          className="flex-1 flex items-center justify-center p-4 min-h-[35vh]"
-        >
+          <div 
+            ref={containerRef}
+            className="flex-1 flex items-center justify-center p-4 min-h-[25vh]"
+          >
           <div className="text-center max-w-3xl w-full" ref={questionRef}>
             <div className="inline-block px-3 py-1 rounded-full bg-white/10 text-white/60 text-xs font-medium mb-4">
               {currentQuestion.subject}
@@ -298,12 +312,12 @@ export default function Quiz() {
               className="font-bold text-white leading-tight"
               style={{ 
                 fontSize: questionFontSize,
-                lineHeight: '1.2',
+                lineHeight: '1.3',
                 maxHeight: '100%',
                 overflow: 'hidden',
-                display: '-webkit-box',
-                WebkitLineClamp: '4',
-                WebkitBoxOrient: 'vertical',
+                wordBreak: 'break-word',
+                hyphens: 'auto',
+                overflowWrap: 'break-word',
               }}
             >
               {currentQuestion.question}
