@@ -296,3 +296,10 @@ input[type="range"] {
     border-radius: 99px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   }
+  
+/* Mobile text adjustments */
+@media (max-width: 480px) {
+  .question-text {
+    font-size: clamp(1.2rem, 4vw, 2rem) !important;
+  }
+}
