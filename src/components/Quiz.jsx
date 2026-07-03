@@ -34,40 +34,48 @@ export default function Quiz() {
   const totalQuestions = questions.length;
 
   // Dynamic font sizing for question
-  useEffect(() => {
-    if (questionRef.current && containerRef.current) {
-      const adjustFontSize = () => {
-        const containerHeight = containerRef.current.clientHeight;
-        const containerWidth = containerRef.current.clientWidth;
-        const textLength = currentQuestion?.question?.length || 0;
+    useEffect(() => {
+      if (questionRef.current && containerRef.current) {
+        const adjustFontSize = () => {
+          const containerHeight = containerRef.current.clientHeight;
+          const containerWidth = containerRef.current.clientWidth;
+          const textLength = currentQuestion?.question?.length || 0;
+          
+          // More aggressive sizing
+          let size = 3.0; // rem
+          if (textLength > 150) size = 1.2;
+          else if (textLength > 130) size = 1.4;
+          else if (textLength > 110) size = 1.6;
+          else if (textLength > 90) size = 1.8;
+          else if (textLength > 70) size = 2.0;
+          else if (textLength > 50) size = 2.2;
+          else if (textLength > 30) size = 2.5;
+          
+          // Mobile adjustment
+          if (containerWidth < 480) {
+            size = size * 0.8; // 20% smaller on mobile
+          } else if (containerWidth < 768) {
+            size = size * 0.9; // 10% smaller on tablet
+          }
+          
+          // Calculate max size based on container height
+          const maxSize = containerHeight / 5.5; // Allow more room for text
+          
+          // Clamp with a lower minimum for mobile
+          let minSize = 1.0;
+          if (containerWidth < 480) {
+            minSize = 0.8; // Even smaller on mobile
+          }
+          
+          const clampedSize = Math.min(size, maxSize);
+          setQuestionFontSize(`${Math.max(clampedSize, minSize)}rem`);
+        };
         
-        // Base size based on text length
-        let size = 3.5; // rem
-        if (textLength > 150) size = 1.8;
-        else if (textLength > 120) size = 2.0;
-        else if (textLength > 100) size = 2.2;
-        else if (textLength > 80) size = 2.5;
-        else if (textLength > 60) size = 2.8;
-        else if (textLength > 40) size = 3.0;
-        
-        // Adjust for mobile (narrower screens)
-        if (containerWidth < 480) {
-          size = size * 0.85; // 15% smaller on mobile
-        } else if (containerWidth < 768) {
-          size = size * 0.92; // 8% smaller on tablet
-        }
-        
-        // Clamp to ensure it fits without truncation
-        const maxSize = containerHeight / 6; // Allow more lines
-        const clampedSize = Math.min(size, maxSize);
-        setQuestionFontSize(`${Math.max(clampedSize, 1.2)}rem`);
-      };
-      
-      adjustFontSize();
-      window.addEventListener('resize', adjustFontSize);
-      return () => window.removeEventListener('resize', adjustFontSize);
-    }
-  }, [currentQuestion]);
+        adjustFontSize();
+        window.addEventListener('resize', adjustFontSize);
+        return () => window.removeEventListener('resize', adjustFontSize);
+      }
+    }, [currentQuestion]);
 
   // Check if any option has long text
   const hasLongOptions = () => {
