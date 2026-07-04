@@ -361,22 +361,22 @@ export default function Quiz() {
         {/* Question Area - 50% with dynamic font */}
         <div 
           ref={containerRef}
-          className="flex-1 flex items-center justify-center p-4 min-h-[35vh]"
+          className="flex-1 flex items-center justify-center p-4 min-h-[25vh]"
         >
-          <div className="text-center max-w-3xl w-full" ref={questionRef}>
-            <div className="inline-block px-3 py-1 rounded-full bg-white/10 text-white/60 text-xs font-medium mb-4">
+          <div className="text-center max-w-3xl w-full px-2" ref={questionRef}>
+            <div className="inline-block px-3 py-1 rounded-full bg-white/10 text-white/60 text-xs font-medium mb-3">
               {currentQuestion.subject}
             </div>
             <h2 
               className="font-bold text-white leading-tight"
               style={{ 
                 fontSize: questionFontSize,
-                lineHeight: '1.2',
+                lineHeight: '1.3',
                 maxHeight: '100%',
                 overflow: 'hidden',
-                display: '-webkit-box',
-                WebkitLineClamp: '4',
-                WebkitBoxOrient: 'vertical',
+                wordBreak: 'break-word',
+                hyphens: 'auto',
+                overflowWrap: 'break-word',
               }}
             >
               {currentQuestion.question}
@@ -385,7 +385,7 @@ export default function Quiz() {
               <img
                 src={currentQuestion.image_url}
                 alt="Question"
-                className="max-h-32 w-auto mx-auto mt-4 rounded-xl"
+                className="max-h-24 w-auto mx-auto mt-3 rounded-xl"
                 onError={(e) => e.target.style.display = 'none'}
               />
             )}
