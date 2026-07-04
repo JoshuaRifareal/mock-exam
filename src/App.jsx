@@ -66,6 +66,9 @@ function AppContent() {
     prompt: 'consent',
   });
 
+  // Check if we're on the review page
+  const isReviewPage = window.location.pathname === '/review';
+
   React.useEffect(() => {
     const savedUser = localStorage.getItem('quizUser');
     if (savedUser) {
@@ -125,6 +128,13 @@ function AppContent() {
     return <ReviewPage onClose={() => { 
       window.location.href = '/'; 
       resetQuiz(); 
+    }} />;
+  }
+
+  // Check for review page FIRST (before user check)
+  if (isReviewPage) {
+    return <ReviewPage onClose={() => { 
+      window.location.href = '/'; 
     }} />;
   }
 
