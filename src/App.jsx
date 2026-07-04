@@ -5,26 +5,21 @@ import MainPage from './components/MainPage';
 import Quiz from './components/Quiz';
 import { useQuizStore } from './stores/quizStore';
 import { useUserStore } from './stores/userStore';
+import { Sparkles, User } from 'lucide-react';
+import ReviewPage from './components/ReviewPage';
 import './index.css';
-import { 
-  User, Sun, Moon, LogOut, 
-  Layers, Clock, Target, Zap,
-  Award, TrendingUp, BookOpen,
-  Sparkles, BarChart3, ChevronDown,
-  Database, CheckCircle2, AlertCircle,
-  RefreshCw
-} from 'lucide-react';
 
 function AppContent() {
   const { user, setUser } = useUserStore();
   const [isLoading, setIsLoading] = React.useState(false);
-  const [isQuizActive, setIsQuizActive] = React.useState(false);
+  const [showQuiz, setShowQuiz] = React.useState(false);
+  const [showReview, setShowReview] = React.useState(false);
+  const path = window.location.pathname;
 
   const login = useGoogleLogin({
     onSuccess: async (response) => {
       console.log('Login success - full response:', response);
       
-      // Store the token immediately
       const userData = {
         access_token: response.access_token,
         token_type: response.token_type,
@@ -35,11 +30,9 @@ function AppContent() {
         timestamp: Date.now(),
       };
       
-      // Save to localStorage directly
       localStorage.setItem('quizUser', JSON.stringify(userData));
       setUser(userData);
       
-      // Fetch user profile
       try {
         const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: {
@@ -49,7 +42,6 @@ function AppContent() {
         const profile = await profileRes.json();
         console.log('User profile:', profile);
         
-        // Update with profile info
         const fullUserData = {
           ...userData,
           ...profile,
@@ -62,7 +54,6 @@ function AppContent() {
         setUser(fullUserData);
       } catch (error) {
         console.error('Error fetching profile:', error);
-        // Still have the token, so we're good
       }
       
       setIsLoading(false);
@@ -72,7 +63,6 @@ function AppContent() {
       setIsLoading(false);
     },
     scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
-    // Add this to force re-authentication with new scopes
     prompt: 'consent',
   });
 
@@ -83,7 +73,6 @@ function AppContent() {
         const parsed = JSON.parse(savedUser);
         console.log('Restored user:', parsed);
         
-        // Check if token is expired
         if (parsed.expires_in) {
           const tokenAge = Date.now() - (parsed.timestamp || 0);
           const expiresInMs = parsed.expires_in * 1000;
@@ -104,27 +93,46 @@ function AppContent() {
     }
   }, []);
 
-  // Listen for quiz state changes
+  // Subscribe to quiz state changes
   React.useEffect(() => {
     const unsubscribe = useQuizStore.subscribe((state) => {
-      setIsQuizActive(state.isActive);
+      console.log('📊 Quiz state changed:', { 
+        isActive: state.isActive, 
+        isComplete: state.isComplete,
+        hasResults: !!state.results 
+      });
+      // Show Quiz if active, complete, or has results
+      setShowQuiz(state.isActive || state.isComplete || !!state.results);
     });
     return unsubscribe;
   }, []);
 
+  // Check initial state
+  const initialStore = useQuizStore.getState();
+  const shouldShowQuiz = initialStore.isActive || initialStore.isComplete || initialStore.results;
+
+  // Loading screen
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary/30 border-t-primary"></div>
       </div>
     );
   }
 
+  // URL-based routing
+  if (path === '/review') {
+    return <ReviewPage onClose={() => { 
+      window.location.href = '/'; 
+      resetQuiz(); 
+    }} />;
+  }
+
+  // User checking
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950 flex items-center justify-center p-4">
         <div className="max-w-sm w-full">
-          {/* Logo & Title */}
           <div className="text-center mb-8">
             <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/20">
               <Sparkles className="w-10 h-10 text-white" />
@@ -136,14 +144,21 @@ function AppContent() {
               Master your subjects with adaptive quizzes
             </p>
           </div>
-  
-          {/* Sign In Card */}
+
           <div className="glass-card p-6 text-center">
+            <div className="mb-6">
+              <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-3">
+                <User className="w-6 h-6 text-white/40" />
+              </div>
+              <p className="text-white/60 text-sm">
+                Sign in to access your quizzes and track your progress
+              </p>
+            </div>
+            
             <button
               onClick={() => login()}
               className="w-full flex items-center justify-center gap-3 bg-white/10 hover:bg-white/15 text-white border border-white/10 rounded-xl px-6 py-3 transition-all hover:scale-[1.02]"
             >
-              Sign in
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
@@ -162,23 +177,27 @@ function AppContent() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
+              <span className="font-medium">Sign in with Google</span>
             </button>
             
-            <p className="text-white/60 text-xs" style={{paddingTop: 7}}>
-              Sign in to access your quizzes and track your progress
+            <p className="text-xs text-white/20 mt-4">
+              Secure • Free • No credit card required
             </p>
-
           </div>
         </div>
       </div>
     );
   }
 
-  // Check if quiz is active
-  const quizStore = useQuizStore.getState();
-  
-  if (quizStore.isActive || isQuizActive) {
+  // Quiz
+  if (shouldShowQuiz || showQuiz) {
+    console.log('🎯 Rendering Quiz component from App');
     return <Quiz />;
+  }
+
+  // Review page
+  if (showReview) {
+    return <ReviewPage onClose={() => setShowReview(false)} />;
   }
 
   return <MainPage />;
@@ -187,9 +206,11 @@ function AppContent() {
 function App() {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   
+  console.log('App starting with clientId:', clientId ? 'present' : 'missing');
+  
   if (!clientId) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
         <div className="bg-destructive/10 border border-destructive rounded-lg p-6 max-w-md">
           <h2 className="text-xl font-bold text-destructive">Configuration Error</h2>
           <p className="mt-2 text-destructive/90">

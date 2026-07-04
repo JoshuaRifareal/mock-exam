@@ -8,12 +8,13 @@ export const useQuizStore = create((set, get) => ({
   isComplete: false,
   settings: {
     numQuestions: 10,
-    timeLimit: 20,
+    timeLimit: 0.5,
     focusMode: false,
     distribution: {},
   },
   results: null,
-  progressQueue: [], // Add this - stores pending progress updates
+  progressQueue: [],
+  wrongAnswers: [], // Add this - tracks wrong answers for review
 
   setQuestions: (questions) => set({ questions }),
   setSettings: (settings) => set({ settings }),
@@ -22,9 +23,17 @@ export const useQuizStore = create((set, get) => ({
     currentIndex: 0, 
     answers: [], 
     isComplete: false,
-    progressQueue: [], // Reset progress queue
+    results: null,
+    progressQueue: [],
+    wrongAnswers: [], // Reset wrong answers
   }),
-  endQuiz: (results) => set({ isActive: false, isComplete: true, results }),
+  endQuiz: (results) => {
+    set({ 
+      isActive: false, 
+      isComplete: true, 
+      results: results 
+    });
+  },
   resetQuiz: () => set({
     isActive: false,
     isComplete: false,
@@ -32,6 +41,7 @@ export const useQuizStore = create((set, get) => ({
     answers: [],
     results: null,
     progressQueue: [],
+    wrongAnswers: [],
   }),
   answerQuestion: (questionId, selectedOption) => {
     const { answers } = get();
@@ -43,15 +53,43 @@ export const useQuizStore = create((set, get) => ({
       set({ currentIndex: currentIndex + 1 });
     }
   },
-  // Add progress to queue
+  // Add wrong answer to tracking
+  addWrongAnswer: (questionId, selectedOption, correctAnswer) => {
+    const { wrongAnswers } = get();
+    // Check if already tracked
+    const exists = wrongAnswers.some(w => w.questionId === questionId);
+    if (!exists) {
+      set({ 
+        wrongAnswers: [...wrongAnswers, { 
+          questionId, 
+          selectedOption, 
+          correctAnswer 
+        }] 
+      });
+    }
+  },
+  // Get wrong answers with full question data
+  getWrongAnswersWithData: () => {
+    const { wrongAnswers, questions } = get();
+    return wrongAnswers.map(wrong => {
+      const question = questions.find(q => q.id === wrong.questionId);
+      return {
+        ...wrong,
+        question: question,
+        selectedOptionText: question ? question[`option${wrong.selectedOption + 1}`] : '',
+        correctOptionText: question ? question[`option${wrong.correctAnswer + 1}`] : '',
+      };
+    });
+  },
+  // Clear wrong answers
+  clearWrongAnswers: () => set({ wrongAnswers: [] }),
+  // Queue progress
   queueProgress: (progressItem) => {
     const { progressQueue } = get();
     set({ 
       progressQueue: [...progressQueue, progressItem] 
     });
   },
-  // Clear progress queue
   clearProgressQueue: () => set({ progressQueue: [] }),
-  // Get progress queue
   getProgressQueue: () => get().progressQueue,
 }));

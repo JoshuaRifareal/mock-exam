@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useQuizStore } from '../stores/quizStore';
 import { useUserStore } from '../stores/userStore';
 import { saveProgressBatch } from '../services/googleSheets';
-import { Timer, Info, ArrowLeft, CheckCircle, XCircle, Award } from 'lucide-react';
+import { Timer, Info, ArrowLeft, CheckCircle, XCircle, Award, AlertTriangle, Clock, BarChart3 } from 'lucide-react';
+import ResultsPage from './ResultsPage';
 
 export default function Quiz() {
-  const {
+  const { 
     questions,
     currentIndex,
     answers,
@@ -17,6 +18,7 @@ export default function Quiz() {
     queueProgress,
     getProgressQueue,
     clearProgressQueue,
+    addWrongAnswer,
   } = useQuizStore();
   const { user } = useUserStore();
   
@@ -33,20 +35,57 @@ export default function Quiz() {
   const currentQuestion = questions[currentIndex];
   const totalQuestions = questions.length;
 
+  // Subscribe to store results
+  const storeResults = useQuizStore((state) => state.results);
+
+  // Sync store results with local state
+  useEffect(() => {
+    if (storeResults) {
+      console.log('📦 Store results detected:', storeResults);
+      setQuizResults(storeResults);
+    }
+  }, [storeResults]);
+
   // Dynamic font sizing for question
+<<<<<<< HEAD
   useEffect(() => {
     if (questionRef.current && containerRef.current) {
       const adjustFontSize = () => {
-        const containerHeight = containerRef.current.clientHeight;
+        const containerHeight = containerRef.current?.clientHeight || 0;
+        const containerWidth = containerRef.current?.clientWidth || 0;
         const textLength = currentQuestion?.question?.length || 0;
         
-        let size = 3.5;
-        if (textLength > 100) size = 2.2;
-        else if (textLength > 70) size = 2.6;
-        else if (textLength > 40) size = 3.0;
+        // Skip if container is not available
+        if (!containerHeight) return;
         
-        const clampedSize = Math.min(size, containerHeight / 10);
-        setQuestionFontSize(`${Math.max(clampedSize, 1.5)}rem`);
+        // More aggressive sizing
+        let size = 3.0; // rem
+        if (textLength > 150) size = 1.2;
+        else if (textLength > 130) size = 1.4;
+        else if (textLength > 110) size = 1.6;
+        else if (textLength > 90) size = 1.8;
+        else if (textLength > 70) size = 2.0;
+        else if (textLength > 50) size = 2.2;
+        else if (textLength > 30) size = 2.5;
+        
+        // Mobile adjustment
+        if (containerWidth < 480) {
+          size = size * 0.8;
+        } else if (containerWidth < 768) {
+          size = size * 0.9;
+        }
+        
+        // Calculate max size based on container height
+        const maxSize = containerHeight / 5.5;
+        
+        // Clamp with a lower minimum for mobile
+        let minSize = 1.0;
+        if (containerWidth < 480) {
+          minSize = 0.8;
+        }
+        
+        const clampedSize = Math.min(size, maxSize);
+        setQuestionFontSize(`${Math.max(clampedSize, minSize)}rem`);
       };
       
       adjustFontSize();
@@ -54,6 +93,50 @@ export default function Quiz() {
       return () => window.removeEventListener('resize', adjustFontSize);
     }
   }, [currentQuestion]);
+=======
+    useEffect(() => {
+      if (questionRef.current && containerRef.current) {
+        const adjustFontSize = () => {
+          const containerHeight = containerRef.current.clientHeight;
+          const containerWidth = containerRef.current.clientWidth;
+          const textLength = currentQuestion?.question?.length || 0;
+          
+          // More aggressive sizing
+          let size = 3.0; // rem
+          if (textLength > 150) size = 1.2;
+          else if (textLength > 130) size = 1.4;
+          else if (textLength > 110) size = 1.6;
+          else if (textLength > 90) size = 1.8;
+          else if (textLength > 70) size = 2.0;
+          else if (textLength > 50) size = 2.2;
+          else if (textLength > 30) size = 2.5;
+          
+          // Mobile adjustment
+          if (containerWidth < 480) {
+            size = size * 0.8; // 20% smaller on mobile
+          } else if (containerWidth < 768) {
+            size = size * 0.9; // 10% smaller on tablet
+          }
+          
+          // Calculate max size based on container height
+          const maxSize = containerHeight / 5.5; // Allow more room for text
+          
+          // Clamp with a lower minimum for mobile
+          let minSize = 1.0;
+          if (containerWidth < 480) {
+            minSize = 0.8; // Even smaller on mobile
+          }
+          
+          const clampedSize = Math.min(size, maxSize);
+          setQuestionFontSize(`${Math.max(clampedSize, minSize)}rem`);
+        };
+        
+        adjustFontSize();
+        window.addEventListener('resize', adjustFontSize);
+        return () => window.removeEventListener('resize', adjustFontSize);
+      }
+    }, [currentQuestion]);
+>>>>>>> 80b9e64396e924122f7d0909c9c8c974cf55d2e6
 
   // Check if any option has long text
   const hasLongOptions = () => {
@@ -91,6 +174,8 @@ export default function Quiz() {
   };
 
   const handleQuizComplete = async () => {
+    console.log('🔄 Quiz complete function called');
+    
     let correct = 0;
     questions.forEach((q, index) => {
       const answer = answers[index];
@@ -99,14 +184,20 @@ export default function Quiz() {
       }
     });
     
+    console.log('✅ Correct answers:', correct, 'out of', totalQuestions);
+    
     const results = {
       correct,
       total: totalQuestions,
       accuracy: (correct / totalQuestions) * 100,
       timeTaken: settings.timeLimit * 3600 - timeRemaining,
     };
+    
+    console.log('📊 Results object:', results);
+    
     setQuizResults(results);
     endQuiz(results);
+    console.log('✅ Quiz results set');
     
     // Batch save all progress
     const progressQueue = getProgressQueue();
@@ -117,6 +208,7 @@ export default function Quiz() {
           progress: progressQueue,
         });
         clearProgressQueue();
+        console.log('✅ Progress saved');
       } catch (error) {
         console.error('Failed to save progress batch:', error);
       }
@@ -126,20 +218,37 @@ export default function Quiz() {
   const handleOptionSelect = async (optionIndex) => {
     if (isAnswered) return;
     
+    console.log('📝 Answering question:', currentIndex + 1, 'of', totalQuestions);
+    
     setSelectedOption(optionIndex);
     setIsAnswered(true);
     answerQuestion(currentQuestion.id, optionIndex);
     
     const isCorrect = optionIndex === currentQuestion.correctAnswer;
+    console.log('✅ Answer is', isCorrect ? 'correct' : 'wrong');
+    
+    // Track wrong answers for review
+    if (!isCorrect) {
+      addWrongAnswer(currentQuestion.id, optionIndex, currentQuestion.correctAnswer);
+      console.log('❌ Wrong answer tracked:', {
+        questionId: currentQuestion.id,
+        selectedOption: optionIndex,
+        correctAnswer: currentQuestion.correctAnswer,
+        questionText: currentQuestion.question
+      });
+    } else {
+      console.log('✅ Correct answer, not tracking');
+    }
     
     // Queue progress with subject
     queueProgress({
       questionId: currentQuestion.id,
-      subject: currentQuestion.subject || '', // Add subject
+      subject: currentQuestion.subject || '',
       isCorrect: isCorrect,
     });
     
     if (currentIndex >= totalQuestions - 1) {
+      console.log('🏁 Last question answered, completing quiz...');
       setTimeout(() => {
         handleQuizComplete();
       }, 400);
@@ -179,51 +288,60 @@ export default function Quiz() {
     window.location.href = '/';
   };
 
-  if (quizResults) {
+  // Use both local and store results
+  const displayResults = quizResults || storeResults;
+  if (displayResults) {
+    console.log('🎉 Rendering results with data:', displayResults);
+    
+    const { correct, total, accuracy, timeTaken } = displayResults;
+    const isMobile = window.innerWidth < 480;
+    const ringSize = isMobile ? 100 : 140;
+    const strokeWidth = isMobile ? 6 : 8;
+    const radius = (ringSize - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const progress = accuracy / 100;
+    const offset = circumference - progress * circumference;
+
+    // Determine score description
+    let description = '';
+    let gradient = '';
+
+    if (accuracy >= 90) {
+      description = 'Excellent!';
+      gradient = 'from-green-500 to-emerald-400';
+    } else if (accuracy >= 80) {
+      description = 'Great Job!';
+      gradient = 'from-blue-500 to-purple-400';
+    } else if (accuracy >= 70) {
+      description = 'Good Work!';
+      gradient = 'from-green-400 to-blue-400';
+    } else if (accuracy >= 60) {
+      description = 'Keep Studying!';
+      gradient = 'from-yellow-500 to-amber-400';
+    } else {
+      description = 'Practice More!';
+      gradient = 'from-orange-500 to-red-400';
+    }
+
     return (
-      <div className="min-h-screen bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950 flex items-center justify-center p-4">
-        <div className="glass-card p-8 max-w-md w-full text-center">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 mx-auto flex items-center justify-center mb-6">
-            <Award className="w-10 h-10 text-white" />
-          </div>
-          <h2 className="text-3xl font-bold text-white mb-2">Quiz Complete!</h2>
-          <p className="text-white/60 mb-6">Great effort! Here's how you did:</p>
-          
-          <div className="space-y-3 mb-6">
-            <div className="flex justify-between p-3 rounded-xl bg-white/5">
-              <span className="text-white/60">Score</span>
-              <span className="text-2xl font-bold text-white">{Math.round(quizResults.accuracy)}%</span>
-            </div>
-            <div className="flex justify-between p-3 rounded-xl bg-white/5">
-              <span className="text-white/60">Correct</span>
-              <span className="text-xl font-bold text-green-400">{quizResults.correct}/{quizResults.total}</span>
-            </div>
-            <div className="flex justify-between p-3 rounded-xl bg-white/5">
-              <span className="text-white/60">Time Taken</span>
-              <span className="text-xl font-bold text-white">{formatTime(quizResults.timeTaken)}</span>
-            </div>
-          </div>
-          
-          <div className="flex gap-3">
-            <button
-              onClick={() => { resetQuiz(); window.location.reload(); }}
-              className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all"
-            >
-              Retry
-            </button>
-            <button
-              onClick={() => { resetQuiz(); window.location.href = '/'; }}
-              className="flex-1 px-4 py-3 rounded-xl bg-white/5 text-white/80 font-semibold hover:bg-white/10 transition-all"
-            >
-              Home
-            </button>
-          </div>
-        </div>
-      </div>
+      <ResultsPage 
+        results={displayResults}
+        formatTime={formatTime}
+        resetQuiz={resetQuiz}
+      />
     );
   }
 
   if (!currentQuestion) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
+        <div className="w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
+      </div>
+    );
+  }
+
+  // If no current question and no results, show loading
+  if (!currentQuestion && !displayResults) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
         <div className="w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
@@ -286,10 +404,10 @@ export default function Quiz() {
         </div>
 
         {/* Question Area - 50% with dynamic font */}
-        <div 
-          ref={containerRef}
-          className="flex-1 flex items-center justify-center p-4 min-h-[35vh]"
-        >
+          <div 
+            ref={containerRef}
+            className="flex-1 flex items-center justify-center p-4 min-h-[25vh]"
+          >
           <div className="text-center max-w-3xl w-full" ref={questionRef}>
             <div className="inline-block px-3 py-1 rounded-full bg-white/10 text-white/60 text-xs font-medium mb-4">
               {currentQuestion.subject}
@@ -298,12 +416,12 @@ export default function Quiz() {
               className="font-bold text-white leading-tight"
               style={{ 
                 fontSize: questionFontSize,
-                lineHeight: '1.2',
+                lineHeight: '1.3',
                 maxHeight: '100%',
                 overflow: 'hidden',
-                display: '-webkit-box',
-                WebkitLineClamp: '4',
-                WebkitBoxOrient: 'vertical',
+                wordBreak: 'break-word',
+                hyphens: 'auto',
+                overflowWrap: 'break-word',
               }}
             >
               {currentQuestion.question}
@@ -454,6 +572,3 @@ export default function Quiz() {
     </>
   );
 }
-
-// Add AlertTriangle import
-import { AlertTriangle } from 'lucide-react';

@@ -485,7 +485,7 @@ export default function MainPage() {
                 <Target className="w-6 h-6 text-green-400" />
               </div>
               <div>
-                <p className="text-sm text-white/40">Passing rate</p>
+                <p className="text-sm text-white/40">Passing</p>
                 <p className="text-2xl font-bold text-white">{Math.round(stats?.accuracy || 0)}%</p>
               </div>
             </div>
@@ -780,7 +780,7 @@ export default function MainPage() {
           }`}
         >
           <span className="relative z-10 flex items-center justify-center gap-2">
-            {allQuestions.length > 0 ? 'Start Quiz' : 'No Questions Available'}
+            {allQuestions.length > 0 ? 'Start Exam' : 'No Questions Available'}
           </span>
           {allQuestions.length > 0 && (
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent shimmer" />
