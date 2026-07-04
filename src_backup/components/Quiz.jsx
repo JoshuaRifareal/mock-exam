@@ -47,6 +47,7 @@ export default function Quiz() {
   }, [storeResults]);
 
   // Dynamic font sizing for question
+<<<<<<< HEAD
   useEffect(() => {
     if (questionRef.current && containerRef.current) {
       const adjustFontSize = () => {
