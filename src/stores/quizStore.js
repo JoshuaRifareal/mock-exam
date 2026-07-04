@@ -15,6 +15,7 @@ export const useQuizStore = create((set, get) => ({
   results: null,
   progressQueue: [],
   wrongAnswers: [], // Add this - tracks wrong answers for review
+  flaggedQuestions: [], // { questionId, comment }
 
   setQuestions: (questions) => set({ questions }),
   setSettings: (settings) => set({ settings }),
@@ -25,7 +26,8 @@ export const useQuizStore = create((set, get) => ({
     isComplete: false,
     results: null,
     progressQueue: [],
-    wrongAnswers: [], // Reset wrong answers
+    wrongAnswers: [],
+    flaggedQuestions: [],
   }),
   endQuiz: (results) => {
     set({ 
@@ -42,6 +44,7 @@ export const useQuizStore = create((set, get) => ({
     results: null,
     progressQueue: [],
     wrongAnswers: [],
+    flaggedQuestions: [],
   }),
   answerQuestion: (questionId, selectedOption) => {
     const { answers } = get();
@@ -92,4 +95,38 @@ export const useQuizStore = create((set, get) => ({
   },
   clearProgressQueue: () => set({ progressQueue: [] }),
   getProgressQueue: () => get().progressQueue,
+
+  // Flagging question
+  flagQuestion: (questionId, comment) => {
+    const { flaggedQuestions } = get();
+    const existing = flaggedQuestions.find(f => f.questionId === questionId);
+    if (existing) {
+      set({
+        flaggedQuestions: flaggedQuestions.map(f =>
+          f.questionId === questionId ? { ...f, comment } : f
+        )
+      });
+    } else {
+      set({
+        flaggedQuestions: [...flaggedQuestions, { questionId, comment }]
+      });
+    }
+  },
+  unflagQuestion: (questionId) => {
+    const { flaggedQuestions } = get();
+    set({
+      flaggedQuestions: flaggedQuestions.filter(f => f.questionId !== questionId)
+    });
+  },
+  isQuestionFlagged: (questionId) => {
+    const { flaggedQuestions } = get();
+    return flaggedQuestions.some(f => f.questionId === questionId);
+  },
+  getFlagComment: (questionId) => {
+    const { flaggedQuestions } = get();
+    const flag = flaggedQuestions.find(f => f.questionId === questionId);
+    return flag ? flag.comment : '';
+  },
+  clearFlaggedQuestions: () => set({ flaggedQuestions: [] }),
 }));
+

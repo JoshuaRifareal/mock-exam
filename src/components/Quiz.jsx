@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuizStore } from '../stores/quizStore';
 import { useUserStore } from '../stores/userStore';
-import { saveProgressBatch } from '../services/googleSheets';
-import { Timer, Info, ArrowLeft, CheckCircle, XCircle, Award, AlertTriangle, Clock, BarChart3 } from 'lucide-react';
+import { saveProgressBatch, saveFlags } from '../services/googleSheets';
+import { Timer, Info, ArrowLeft, CheckCircle, XCircle, Award, AlertTriangle, Clock, BarChart3, Flag } from 'lucide-react';
 import ResultsPage from './ResultsPage';
 
 export default function Quiz() {
@@ -34,6 +34,17 @@ export default function Quiz() {
 
   const currentQuestion = questions[currentIndex];
   const totalQuestions = questions.length;
+
+  // Get flag actions from store
+  const flaggedQuestions = useQuizStore((state) => state.flaggedQuestions);
+  const flagQuestion = useQuizStore((state) => state.flagQuestion);
+  const unflagQuestion = useQuizStore((state) => state.unflagQuestion);
+  const isQuestionFlagged = useQuizStore((state) => state.isQuestionFlagged);
+  const getFlagComment = useQuizStore((state) => state.getFlagComment);
+
+  // Local state for flag modal
+  const [showFlagModal, setShowFlagModal] = useState(false);
+  const [flagComment, setFlagComment] = useState('');
 
   // Subscribe to store results
   const storeResults = useQuizStore((state) => state.results);
@@ -102,6 +113,7 @@ export default function Quiz() {
 
   const shouldUse1x4Grid = hasLongOptions();
 
+  // Timer countdown
   useEffect(() => {
     if (timeRemaining > 0 && !quizResults) {
       const timer = setInterval(() => {
@@ -116,7 +128,6 @@ export default function Quiz() {
       return () => clearInterval(timer);
     }
   }, [timeRemaining, quizResults]);
-
   const formatTime = (seconds) => {
     const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -128,6 +139,7 @@ export default function Quiz() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Quiz handlers
   const handleQuizComplete = async () => {
     console.log('🔄 Quiz complete function called');
     
@@ -168,8 +180,21 @@ export default function Quiz() {
         console.error('Failed to save progress batch:', error);
       }
     }
-  };
 
+    // After saving progress, save flags
+    const flaggedQuestions = useQuizStore.getState().flaggedQuestions;
+    if (flaggedQuestions.length > 0) {
+      try {
+        await saveFlags({
+          flaggedQuestions: flaggedQuestions,
+          userEmail: user?.email,
+        });
+        console.log('✅ Flags saved');
+      } catch (error) {
+        console.error('Failed to save flags:', error);
+      }
+    }
+  };
   const handleOptionSelect = async (optionIndex) => {
     if (isAnswered) return;
     
@@ -216,7 +241,6 @@ export default function Quiz() {
       }, 400);
     }
   };
-
   const handleExit = async (shouldSubmit) => {
     setShowExitConfirm(false);
     
@@ -345,6 +369,17 @@ export default function Quiz() {
               </button>
             )}
           </div>
+
+          <button
+            onClick={() => setShowFlagModal(true)}
+            className={`p-2 rounded-xl transition-colors ${
+              isQuestionFlagged(currentQuestion.id) 
+                ? 'text-yellow-400 bg-yellow-400/10' 
+                : 'text-white/40 hover:text-white/80 hover:bg-white/5'
+            }`}
+            >
+            <Flag className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Progress Bar - Thicker */}
@@ -458,34 +493,34 @@ export default function Quiz() {
             );
           })}
         </div>
-
-        {/* Hint Modal */}
-        {showHint && (
-          <div 
-            className="fixed inset-0 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm z-50"
-            onClick={() => setShowHint(false)}
-          >
-            <div 
-              className="glass-card p-8 max-w-md w-full text-center"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 mx-auto flex items-center justify-center mb-4">
-                <Info className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">💡 Hint</h3>
-              <p className="text-white/70 text-sm leading-relaxed">
-                {currentQuestion.hint}
-              </p>
-              <button
-                onClick={() => setShowHint(false)}
-                className="mt-6 px-6 py-2 rounded-xl bg-white/10 text-white/80 hover:bg-white/20 transition-colors text-sm"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Hint Modal */}
+      {showHint && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm z-50"
+          onClick={() => setShowHint(false)}
+        >
+          <div 
+            className="glass-card p-8 max-w-md w-full text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 mx-auto flex items-center justify-center mb-4">
+              <Info className="w-7 h-7 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">💡 Hint</h3>
+            <p className="text-white/70 text-sm leading-relaxed">
+              {currentQuestion.hint}
+            </p>
+            <button
+              onClick={() => setShowHint(false)}
+              className="mt-6 px-6 py-2 rounded-xl bg-white/10 text-white/80 hover:bg-white/20 transition-colors text-sm"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Exit Confirmation Modal */}
       {showExitConfirm && (
@@ -510,7 +545,7 @@ export default function Quiz() {
               </button>
               <button
                 onClick={() => handleExit(false)}
-                className="w-full px-4 py-3 rounded-xl bg-red/5 text-white/80 font-semibold hover:bg-white/10 transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-red-500/20 text-white font-semibold hover:bg-red-500/30 transition-all"
               >
                 Discard
               </button>
@@ -521,6 +556,85 @@ export default function Quiz() {
                 Continue
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Flag Modal */}
+      {showFlagModal && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm z-50"
+          onClick={() => setShowFlagModal(false)}
+        >
+          <div 
+            className="glass-card p-8 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto mb-4">
+              <Flag className={`w-7 h-7 ${isQuestionFlagged(currentQuestion.id) ? 'text-yellow-400' : 'text-yellow-400/60'}`} />
+            </div>
+            <h3 className="text-xl font-bold text-white text-center mb-2">
+              {isQuestionFlagged(currentQuestion.id) ? 'Edit Flag' : 'Flag Question'}
+            </h3>
+            <p className="text-sm text-white/40 text-center mb-4">
+              Add a comment about this question (optional)
+            </p>
+            
+            <textarea
+              value={flagComment}
+              onChange={(e) => setFlagComment(e.target.value)}
+              placeholder="What's wrong with this question?"
+              className="w-full p-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-sm resize-none focus:outline-none focus:border-yellow-400/50 transition-colors"
+              rows="3"
+            />
+            
+            <div className="flex flex-col gap-2 mt-4">
+              <button
+                onClick={() => {
+                  if (isQuestionFlagged(currentQuestion.id)) {
+                    unflagQuestion(currentQuestion.id);
+                  } else {
+                    flagQuestion(currentQuestion.id, flagComment);
+                  }
+                  setShowFlagModal(false);
+                  setFlagComment('');
+                }}
+                className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-600 text-white font-semibold hover:shadow-lg hover:shadow-yellow-500/25 transition-all"
+              >
+                {isQuestionFlagged(currentQuestion.id) ? 'Update Flag' : 'Flag Question'}
+              </button>
+              
+              {isQuestionFlagged(currentQuestion.id) && (
+                <button
+                  onClick={() => {
+                    unflagQuestion(currentQuestion.id);
+                    setShowFlagModal(false);
+                    setFlagComment('');
+                  }}
+                  className="w-full px-4 py-3 rounded-xl bg-red-500/20 text-white font-semibold hover:bg-red-500/30 transition-all"
+                >
+                  Remove Flag
+                </button>
+              )}
+              
+              <button
+                onClick={() => {
+                  setShowFlagModal(false);
+                  setFlagComment('');
+                }}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 text-white/40 font-semibold hover:bg-white/10 transition-all text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+            
+            {isQuestionFlagged(currentQuestion.id) && (
+              <div className="mt-3 p-2 rounded-lg bg-yellow-400/10 border border-yellow-400/20">
+                <p className="text-xs text-yellow-400/60 text-center">
+                  ⚠️ This question is flagged.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
