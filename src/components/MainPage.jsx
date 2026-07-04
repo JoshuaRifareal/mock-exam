@@ -780,7 +780,7 @@ export default function MainPage() {
           }`}
         >
           <span className="relative z-10 flex items-center justify-center gap-2">
-            {allQuestions.length > 0 ? 'Start Quiz' : 'No Questions Available'}
+            {allQuestions.length > 0 ? 'Start Exam' : 'No Questions Available'}
           </span>
           {allQuestions.length > 0 && (
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent shimmer" />
