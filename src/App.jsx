@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 import { ThemeProvider } from './contexts/ThemeContext';
 import MainPage from './components/MainPage';
 import Quiz from './components/Quiz';
+import ReviewPage from './components/ReviewPage';
+import SplashScreen from './components/SplashScreen';
 import { useQuizStore } from './stores/quizStore';
 import { useUserStore } from './stores/userStore';
 import { Sparkles, User } from 'lucide-react';
-import ReviewPage from './components/ReviewPage';
 import './index.css';
 
 function AppContent() {
@@ -17,6 +18,8 @@ function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
   const path = window.location.pathname;
 
+  // ===================== ALL HOOKS HERE =====================
+  
   const login = useGoogleLogin({
     onSuccess: async (response) => {
       console.log('Login success - full response:', response);
@@ -67,14 +70,7 @@ function AppContent() {
     prompt: 'consent',
   });
 
-  // Splash screen
-  if (showSplash) {
-    return <SplashScreen onComplete={() => setShowSplash(false)} />;
-  }
-
-  // Check if we're on the review page
-  const isReviewPage = window.location.pathname === '/review';
-
+  // 1. User restore effect
   React.useEffect(() => {
     const savedUser = localStorage.getItem('quizUser');
     if (savedUser) {
@@ -102,7 +98,7 @@ function AppContent() {
     }
   }, []);
 
-  // Subscribe to quiz state changes
+  // 2. Quiz state subscription effect
   React.useEffect(() => {
     const unsubscribe = useQuizStore.subscribe((state) => {
       console.log('📊 Quiz state changed:', { 
@@ -110,15 +106,22 @@ function AppContent() {
         isComplete: state.isComplete,
         hasResults: !!state.results 
       });
-      // Show Quiz if active, complete, or has results
       setShowQuiz(state.isActive || state.isComplete || !!state.results);
     });
     return unsubscribe;
   }, []);
 
-  // Check initial state
+  // ===================== CONDITIONAL RETURNS AFTER ALL HOOKS =====================
+  
+  // Check initial state (after all hooks)
   const initialStore = useQuizStore.getState();
   const shouldShowQuiz = initialStore.isActive || initialStore.isComplete || initialStore.results;
+  const isReviewPage = path === '/review';
+
+  // Splash screen
+  if (showSplash) {
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  }
 
   // Loading screen
   if (isLoading) {
@@ -129,22 +132,18 @@ function AppContent() {
     );
   }
 
-  // URL-based routing
-  if (path === '/review') {
-    return <ReviewPage onClose={() => { 
-      window.location.href = '/'; 
-      resetQuiz(); 
-    }} />;
-  }
-
-  // Check for review page FIRST (before user check)
+  // Review page (URL-based)
   if (isReviewPage) {
     return <ReviewPage onClose={() => { 
+      sessionStorage.removeItem('reviewWrongAnswers');
+      sessionStorage.removeItem('reviewQuestions');
+      sessionStorage.removeItem('reviewAnswers');
+      sessionStorage.removeItem('reviewResults');
       window.location.href = '/'; 
     }} />;
   }
 
-  // User checking
+  // User not logged in
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950 flex items-center justify-center p-4">
@@ -211,7 +210,7 @@ function AppContent() {
     return <Quiz />;
   }
 
-  // Review page
+  // Review page (state-based)
   if (showReview) {
     return <ReviewPage onClose={() => setShowReview(false)} />;
   }
