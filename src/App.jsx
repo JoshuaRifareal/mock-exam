@@ -14,6 +14,7 @@ function AppContent() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [showQuiz, setShowQuiz] = React.useState(false);
   const [showReview, setShowReview] = React.useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const path = window.location.pathname;
 
   const login = useGoogleLogin({
@@ -65,6 +66,11 @@ function AppContent() {
     scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
     prompt: 'consent',
   });
+
+  // Splash screen
+  if (showSplash) {
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  }
 
   // Check if we're on the review page
   const isReviewPage = window.location.pathname === '/review';
