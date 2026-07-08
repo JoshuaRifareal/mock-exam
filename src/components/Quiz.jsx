@@ -35,10 +35,14 @@ export default function Quiz() {
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [flagComment, setFlagComment] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
-  const [imageZoom, setImageZoom] = useState(1);
   const [questionFontSize, setQuestionFontSize] = useState('2.5rem');
   const questionRef = useRef(null);
   const containerRef = useRef(null);
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [initialPosition, setInitialPosition] = useState({ x: 0, y: 0 });
 
   const currentQuestion = questions[currentIndex];
   const totalQuestions = questions.length;
@@ -62,20 +66,28 @@ export default function Quiz() {
     }
   }, [showFlagModal, currentQuestion]);
 
-  // Reset zoom when image modal opens/closes
+  // Reset zoom and position when modal opens/closes
   useEffect(() => {
     if (showImageModal) {
       setImageZoom(1);
+      setImagePosition({ x: 0, y: 0 });
     }
   }, [showImageModal]);
 
-  // Handle scroll wheel zoom for image modal
-  useEffect(() => {
+  // Handle scroll wheel zoom (desktop)
+    useEffect(() => {
     const handleWheel = (e) => {
       if (!showImageModal) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setImageZoom(prev => Math.max(0.5, Math.min(3, prev + delta)));
+      setImageZoom(prev => {
+        const newZoom = Math.max(0.5, Math.min(3, prev + delta));
+        // If zooming out to 1 or less, reset position
+        if (newZoom <= 1) {
+          setImagePosition({ x: 0, y: 0 });
+        }
+        return newZoom;
+      });
     };
 
     if (showImageModal) {
@@ -84,44 +96,106 @@ export default function Quiz() {
     return () => window.removeEventListener('wheel', handleWheel);
   }, [showImageModal]);
 
-  // Handle touch pinch for mobile
+  // Handle touch pinch and pan (mobile)
   useEffect(() => {
     let initialDistance = 0;
     let initialZoom = 1;
+    let initialTouchPosition = { x: 0, y: 0 };
+    let lastTouchPosition = { x: 0, y: 0 };
+    let isPinching = false;
 
     const handleTouchStart = (e) => {
-      if (!showImageModal || e.touches.length !== 2) return;
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      initialDistance = Math.hypot(
-        touch1.clientX - touch2.clientX,
-        touch1.clientY - touch2.clientY
-      );
-      initialZoom = imageZoom;
+      if (!showImageModal) return;
+      
+      if (e.touches.length === 1) {
+        // Single touch = pan
+        const touch = e.touches[0];
+        setIsDragging(true);
+        setDragStart({ x: touch.clientX, y: touch.clientY });
+        setInitialPosition({ x: imagePosition.x, y: imagePosition.y });
+      } else if (e.touches.length === 2) {
+        // Two touches = pinch
+        isPinching = true;
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        initialDistance = Math.hypot(
+          touch1.clientX - touch2.clientX,
+          touch1.clientY - touch2.clientY
+        );
+        initialZoom = imageZoom;
+        
+        // Store the midpoint for zoom center
+        initialTouchPosition = {
+          x: (touch1.clientX + touch2.clientX) / 2,
+          y: (touch1.clientY + touch2.clientY) / 2
+        };
+        lastTouchPosition = { ...initialTouchPosition };
+      }
     };
 
     const handleTouchMove = (e) => {
-      if (!showImageModal || e.touches.length !== 2) return;
-      e.preventDefault();
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      const distance = Math.hypot(
-        touch1.clientX - touch2.clientX,
-        touch1.clientY - touch2.clientY
-      );
-      const scale = distance / initialDistance;
-      setImageZoom(Math.max(0.5, Math.min(3, initialZoom * scale)));
+      if (!showImageModal) return;
+      
+      if (e.touches.length === 1 && isDragging && !isPinching) {
+        // Pan with one finger (only when zoomed in)
+        if (imageZoom <= 1) {
+          setIsDragging(false);
+          return;
+        }
+        
+        e.preventDefault();
+        const touch = e.touches[0];
+        const dx = (touch.clientX - dragStart.x) / imageZoom;
+        const dy = (touch.clientY - dragStart.y) / imageZoom;
+        
+        // Calculate bounds to prevent dragging out of view
+        const maxX = (window.innerWidth / 2) / imageZoom;
+        const maxY = (window.innerHeight / 2) / imageZoom;
+        
+        setImagePosition({
+          x: Math.max(-maxX, Math.min(maxX, initialPosition.x + dx)),
+          y: Math.max(-maxY, Math.min(maxY, initialPosition.y + dy))
+        });
+      } else if (e.touches.length === 2 && isPinching) {
+        // Pinch with two fingers
+        e.preventDefault();
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const distance = Math.hypot(
+          touch1.clientX - touch2.clientX,
+          touch1.clientY - touch2.clientY
+        );
+        
+        const scale = distance / initialDistance;
+        let newZoom = Math.max(0.5, Math.min(3, initialZoom * scale));
+        
+        // If zooming out to 1 or less, reset position
+        if (newZoom <= 1) {
+          setImagePosition({ x: 0, y: 0 });
+        }
+        
+        setImageZoom(newZoom);
+      }
+    };
+
+    const handleTouchEnd = (e) => {
+      if (e.touches.length === 0) {
+        setIsDragging(false);
+        isPinching = false;
+      }
     };
 
     if (showImageModal) {
       window.addEventListener('touchstart', handleTouchStart, { passive: false });
       window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleTouchEnd, { passive: false });
     }
     return () => {
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [showImageModal, imageZoom]);
+  }, [showImageModal, imageZoom, imagePosition, isDragging]);
 
   // Dynamic font sizing for question
   useEffect(() => {
@@ -554,15 +628,23 @@ export default function Quiz() {
         )}
       </div>
 
-      {/* Image Modal - Modern Clean Version */}
+      {/* Image Modal - With Pan and Pinch Support */}
       {showImageModal && (
         <div 
           className="fixed inset-0 flex items-center justify-center bg-black/85 backdrop-blur-md z-50"
-          onClick={() => setShowImageModal(false)}
+          onClick={() => {
+            setShowImageModal(false);
+            setImageZoom(1);
+            setImagePosition({ x: 0, y: 0 });
+          }}
         >
           {/* Back Arrow */}
           <button
-            onClick={() => setShowImageModal(false)}
+            onClick={() => {
+              setShowImageModal(false);
+              setImageZoom(1);
+              setImagePosition({ x: 0, y: 0 });
+            }}
             className="absolute top-6 left-6 z-10 p-2.5 rounded-full bg-white/5 hover:bg-white/15 transition-all text-white/60 hover:text-white backdrop-blur-sm border border-white/5"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -570,17 +652,18 @@ export default function Quiz() {
           
           {/* Image Container */}
           <div 
-            className="max-w-[90vw] max-h-[85vh] flex items-center justify-center p-4"
+            className="max-w-[90vw] max-h-[85vh] flex items-center justify-center p-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <img
               src={currentQuestion.image_url}
               alt="Question figure"
-              className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-xl shadow-2xl select-none"
+              className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-xl shadow-2xl select-none touch-none"
               style={{
-                transform: `scale(${imageZoom})`,
-                transition: 'transform 0.15s ease-out',
+                transform: `scale(${imageZoom}) translate(${imagePosition.x / imageZoom}px, ${imagePosition.y / imageZoom}px)`,
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
                 transformOrigin: 'center center',
+                touchAction: 'none',
               }}
               draggable={false}
               onError={(e) => {
@@ -588,6 +671,13 @@ export default function Quiz() {
               }}
             />
           </div>
+          
+          {/* Zoom indicator (optional - shows briefly) */}
+          {imageZoom !== 1 && (
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white/60 text-xs">
+              {Math.round(imageZoom * 100)}%
+            </div>
+          )}
         </div>
       )}
 
