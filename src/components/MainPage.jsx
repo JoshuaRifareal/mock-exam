@@ -627,7 +627,7 @@ export default function MainPage() {
                   </div>
                   <div className="flex justify-between mt-0.5">
                     <span className="text-[10px] text-white/30">
-                      {subject.correct}/{subject.attempted} attempts
+                      {subject.correct}/{subject.attempted} success ratio
                     </span>
                     <span className="text-[10px] text-white/20">
                       {subject.accuracy >= 70 ? '🟢' :
@@ -691,7 +691,7 @@ export default function MainPage() {
                         {subject.attempted}/{subject.total}
                       </span>
                       <span className="text-[10px] text-white/30 pl-3">
-                        {subject.isComplete ? '✅ Complete' : `${subject.total - subject.attempted} remaining`}
+                        {subject.isComplete ? 'Answered all items' : `${subject.total - subject.attempted} unanswered`}
                       </span>
                     </span>
                     <span className="text-[10px] text-white/20">
