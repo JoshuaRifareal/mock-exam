@@ -249,7 +249,7 @@ export default function ResultsPage({ results, formatTime, resetQuiz, onSaveComp
               }}
               className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-700 to-purple-900 text-white font-semibold hover:shadow-lg hover:shadow-purple-700/25 transition-all hover:scale-[1.02]"
             >
-              📋 Review
+              Review
             </button>
             
             <button
@@ -267,7 +267,7 @@ export default function ResultsPage({ results, formatTime, resetQuiz, onSaveComp
               }}
               className="flex-1 px-4 py-3 rounded-xl bg-white/10 text-white/80 font-semibold hover:bg-white/20 transition-all hover:scale-[1.02] border border-white/10"
             >
-              🏠 Home
+              Home
             </button>
           </div>
         )}
