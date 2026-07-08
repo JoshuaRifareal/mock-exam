@@ -19,6 +19,55 @@ function AppContent() {
   const path = window.location.pathname;
   const isReviewPage = path === '/review';
 
+  // Silent refresh token function
+  const refreshToken = useGoogleLogin({
+    onSuccess: async (response) => {
+      console.log('🔄 Token refreshed successfully');
+      
+      // Get existing user data
+      const existingUser = JSON.parse(localStorage.getItem('quizUser') || '{}');
+      
+      // Update with new token
+      const userData = {
+        ...existingUser,
+        access_token: response.access_token,
+        token_type: response.token_type,
+        expires_in: response.expires_in,
+        scope: response.scope,
+        timestamp: Date.now(),
+      };
+      
+      localStorage.setItem('quizUser', JSON.stringify(userData));
+      setUser(userData);
+      
+      // Refresh user profile (optional)
+      try {
+        const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: {
+            Authorization: `Bearer ${response.access_token}`,
+          },
+        });
+        const profile = await profileRes.json();
+        const fullUserData = {
+          ...userData,
+          ...profile,
+        };
+        localStorage.setItem('quizUser', JSON.stringify(fullUserData));
+        setUser(fullUserData);
+      } catch (error) {
+        console.error('Error refreshing profile:', error);
+      }
+    },
+    onError: (error) => {
+      console.error('Token refresh failed:', error);
+      // If refresh fails, force re-login
+      localStorage.removeItem('quizUser');
+      setUser(null);
+    },
+    scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+    prompt: 'none', // Silent refresh - no UI
+  });
+
   const login = useGoogleLogin({
     onSuccess: async (response) => {
       console.log('Login success - full response:', response);
@@ -76,15 +125,18 @@ function AppContent() {
         const parsed = JSON.parse(savedUser);
         console.log('Restored user:', parsed);
         
-        if (parsed.expires_in) {
-          const tokenAge = Date.now() - (parsed.timestamp || 0);
-          const expiresInMs = parsed.expires_in * 1000;
+        // Check if token is expired or about to expire
+        if (parsed.expires_in && parsed.timestamp) {
+          const tokenAge = (Date.now() - parsed.timestamp) / 1000; // Age in seconds
+          const expiresIn = parsed.expires_in;
+          const timeLeft = expiresIn - tokenAge;
           
-          if (tokenAge > expiresInMs) {
-            console.warn('Token expired, clearing session');
-            localStorage.removeItem('quizUser');
-            setUser(null);
-            return;
+          console.log(`⏱️ Token expires in ${Math.round(timeLeft / 60)} minutes`);
+          
+          // If token has less than 5 minutes left, refresh it
+          if (timeLeft < 300) {
+            console.log('🔄 Token expiring soon, refreshing...');
+            refreshToken();
           }
         }
         
@@ -95,6 +147,36 @@ function AppContent() {
       }
     }
   }, []);
+
+  // Auto-refresh token periodically
+  useEffect(() => {
+    if (!user) return;
+    
+    // Check token every minute
+    const interval = setInterval(() => {
+      const savedUser = localStorage.getItem('quizUser');
+      if (savedUser) {
+        try {
+          const parsed = JSON.parse(savedUser);
+          if (parsed.expires_in && parsed.timestamp) {
+            const tokenAge = (Date.now() - parsed.timestamp) / 1000;
+            const expiresIn = parsed.expires_in;
+            const timeLeft = expiresIn - tokenAge;
+            
+            // If token has less than 5 minutes left, refresh it
+            if (timeLeft < 300) {
+              console.log('🔄 Token expiring soon, refreshing...');
+              refreshToken();
+            }
+          }
+        } catch (e) {
+          console.error('Error checking token:', e);
+        }
+      }
+    }, 60000); // Check every minute
+    
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Subscribe to quiz state changes
   useEffect(() => {
@@ -185,6 +267,10 @@ function AppContent() {
               </svg>
               <span className="font-medium">Sign in with Google</span>
             </button>
+            
+            <p className="text-xs text-white/20 mt-4">
+              Secure • Free • No credit card required
+            </p>
           </div>
         </div>
       </div>
