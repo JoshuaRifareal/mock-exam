@@ -4,7 +4,22 @@ import { Clock, BarChart3, CheckCircle, XCircle, AlertCircle, Loader2 } from 'lu
 import { useQuizStore } from '../stores/quizStore';
 
 export default function ResultsPage({ results, formatTime, resetQuiz, onSaveComplete, onRetrySave }) {
-  const { correct, total, accuracy, timeTaken } = results;
+  // Get answers and questions from store to recalculate
+  const storeAnswers = useQuizStore((state) => state.answers);
+  const storeQuestions = useQuizStore((state) => state.questions);
+  
+  // Recalculate correct count from stored answers
+  const recalculatedCorrect = storeQuestions.filter((q, index) => {
+    const answer = storeAnswers[index];
+    return answer && answer.selectedOption === q.correctAnswer;
+  }).length;
+  
+  // Use recalculated values if they match, otherwise use results
+  const totalQuestions = storeQuestions.length || results.total;
+  const correctCount = recalculatedCorrect > 0 ? recalculatedCorrect : results.correct;
+  const accuracy = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : results.accuracy;
+  const timeTaken = results.timeTaken || 0;
+  
   const isMobile = window.innerWidth < 480;
   const ringSize = isMobile ? 120 : 160;
   const strokeWidth = isMobile ? 8 : 10;
@@ -74,8 +89,12 @@ export default function ResultsPage({ results, formatTime, resetQuiz, onSaveComp
     sessionStorage.removeItem('reviewQuestions');
     sessionStorage.removeItem('reviewAnswers');
     sessionStorage.removeItem('reviewResults');
+    sessionStorage.removeItem('quizAnswers');
+    sessionStorage.removeItem('quizQuestions');
+    sessionStorage.removeItem('quizResults');
+    sessionStorage.removeItem('autoStartQuiz');
     resetQuiz();
-    window.location.href = '/';
+    window.location.replace('/');
   };
 
   return (
@@ -138,7 +157,7 @@ export default function ResultsPage({ results, formatTime, resetQuiz, onSaveComp
               {Math.round(accuracy)}%
             </span>
             <span className={`text-white/40 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-              {correct}/{total} correct
+              {correctCount}/{totalQuestions} correct
             </span>
           </div>
         </div>
@@ -208,7 +227,7 @@ export default function ResultsPage({ results, formatTime, resetQuiz, onSaveComp
           )}
         </div>
 
-        {/* Action Buttons - Hidden until save is complete */}
+        {/* Action Buttons */}
         {saveComplete && (
           <div className="flex gap-3 animate-fadeIn">
             <button
@@ -222,36 +241,36 @@ export default function ResultsPage({ results, formatTime, resetQuiz, onSaveComp
                 sessionStorage.setItem('reviewQuestions', JSON.stringify(questions));
                 sessionStorage.setItem('reviewAnswers', JSON.stringify(answers));
                 sessionStorage.setItem('reviewResults', JSON.stringify(results));
+                sessionStorage.setItem('quizAnswers', JSON.stringify(answers));
+                sessionStorage.setItem('quizQuestions', JSON.stringify(questions));
+                sessionStorage.setItem('quizResults', JSON.stringify(results));
                 
                 window.location.href = '/review';
               }}
               className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-700 to-purple-900 text-white font-semibold hover:shadow-lg hover:shadow-purple-700/25 transition-all hover:scale-[1.02]"
             >
-              📋 Review
+              Review
             </button>
             
             <button
               onClick={() => {
-                const { resetQuiz, startQuiz, setQuestions, setSettings } = useQuizStore.getState();
-                
+                // Reset quiz state first
                 resetQuiz();
-                
-                const questions = useQuizStore.getState().questions;
-                const settings = useQuizStore.getState().settings;
-                
-                if (questions.length === 0) {
-                  window.location.href = '/';
-                  return;
-                }
-                
-                setQuestions(questions);
-                setSettings(settings);
-                startQuiz();
-                window.location.reload();
+                // Clear sessionStorage
+                sessionStorage.removeItem('reviewWrongAnswers');
+                sessionStorage.removeItem('reviewQuestions');
+                sessionStorage.removeItem('reviewAnswers');
+                sessionStorage.removeItem('reviewResults');
+                sessionStorage.removeItem('quizAnswers');
+                sessionStorage.removeItem('quizQuestions');
+                sessionStorage.removeItem('quizResults');
+                sessionStorage.removeItem('autoStartQuiz');
+                // Force navigation
+                window.location.replace('/');
               }}
               className="flex-1 px-4 py-3 rounded-xl bg-white/10 text-white/80 font-semibold hover:bg-white/20 transition-all hover:scale-[1.02] border border-white/10"
             >
-              🏠 Home
+              Home
             </button>
           </div>
         )}

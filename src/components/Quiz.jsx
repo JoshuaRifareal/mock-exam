@@ -161,6 +161,11 @@ export default function Quiz() {
 
   const handleQuizComplete = async () => {
     console.log('🔄 Quiz complete function called');
+    console.log('📝 Current answers:', answers);
+    
+    // Store answers in sessionStorage for review
+    sessionStorage.setItem('quizAnswers', JSON.stringify(answers));
+    sessionStorage.setItem('quizQuestions', JSON.stringify(questions));
     
     let correct = 0;
     questions.forEach((q, index) => {

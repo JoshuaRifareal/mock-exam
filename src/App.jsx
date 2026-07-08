@@ -12,14 +12,13 @@ import './index.css';
 
 function AppContent() {
   const { user, setUser } = useUserStore();
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [showQuiz, setShowQuiz] = React.useState(false);
-  const [showReview, setShowReview] = React.useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
-  const path = window.location.pathname;
+  const [showQuiz, setShowQuiz] = useState(false);
 
-  // ===================== ALL HOOKS HERE =====================
-  
+  const path = window.location.pathname;
+  const isReviewPage = path === '/review';
+
   const login = useGoogleLogin({
     onSuccess: async (response) => {
       console.log('Login success - full response:', response);
@@ -70,8 +69,7 @@ function AppContent() {
     prompt: 'consent',
   });
 
-  // 1. User restore effect
-  React.useEffect(() => {
+  useEffect(() => {
     const savedUser = localStorage.getItem('quizUser');
     if (savedUser) {
       try {
@@ -98,32 +96,26 @@ function AppContent() {
     }
   }, []);
 
-  // 2. Quiz state subscription effect
-  React.useEffect(() => {
+  // Subscribe to quiz state changes
+  useEffect(() => {
     const unsubscribe = useQuizStore.subscribe((state) => {
       console.log('📊 Quiz state changed:', { 
         isActive: state.isActive, 
-        isComplete: state.isComplete,
-        hasResults: !!state.results 
+        isComplete: state.isComplete 
       });
-      setShowQuiz(state.isActive || state.isComplete || !!state.results);
+      setShowQuiz(state.isActive || state.isComplete);
     });
     return unsubscribe;
   }, []);
 
-  // ===================== CONDITIONAL RETURNS AFTER ALL HOOKS =====================
-  
-  // Check initial state (after all hooks)
+  // Check initial state on mount
   const initialStore = useQuizStore.getState();
-  const shouldShowQuiz = initialStore.isActive || initialStore.isComplete || initialStore.results;
-  const isReviewPage = path === '/review';
+  const isQuizActive = initialStore.isActive || initialStore.isComplete;
 
-  // Splash screen
   if (showSplash) {
     return <SplashScreen onComplete={() => setShowSplash(false)} />;
   }
 
-  // Loading screen
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
@@ -132,18 +124,17 @@ function AppContent() {
     );
   }
 
-  // Review page (URL-based)
+  // Review page - always render if on /review
   if (isReviewPage) {
-    return <ReviewPage onClose={() => { 
-      sessionStorage.removeItem('reviewWrongAnswers');
-      sessionStorage.removeItem('reviewQuestions');
-      sessionStorage.removeItem('reviewAnswers');
-      sessionStorage.removeItem('reviewResults');
-      window.location.href = '/'; 
-    }} />;
+    return <ReviewPage />;
   }
 
-  // User not logged in
+  // Quiz active - check both initial and subscription state
+  if (isQuizActive || showQuiz) {
+    return <Quiz />;
+  }
+
+  // Not logged in
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950 flex items-center justify-center p-4">
@@ -194,25 +185,10 @@ function AppContent() {
               </svg>
               <span className="font-medium">Sign in with Google</span>
             </button>
-            
-            <p className="text-xs text-white/20 mt-4">
-              Secure • Free • No credit card required
-            </p>
           </div>
         </div>
       </div>
     );
-  }
-
-  // Quiz
-  if (shouldShowQuiz || showQuiz) {
-    console.log('🎯 Rendering Quiz component from App');
-    return <Quiz />;
-  }
-
-  // Review page (state-based)
-  if (showReview) {
-    return <ReviewPage onClose={() => setShowReview(false)} />;
   }
 
   return <MainPage />;
