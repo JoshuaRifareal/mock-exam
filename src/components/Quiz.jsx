@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useQuizStore } from '../stores/quizStore';
 import { useUserStore } from '../stores/userStore';
 import { saveProgressBatch, saveFlags } from '../services/googleSheets';
-import { Timer, Info, ArrowLeft, CheckCircle, XCircle, Award, AlertTriangle, Clock, BarChart3, Flag } from 'lucide-react';
+import { Timer, Info, ArrowLeft, CheckCircle, XCircle, Award, AlertTriangle, Clock, BarChart3, Flag, ZoomIn, ZoomOut, X, Image} from 'lucide-react';
 import ResultsPage from './ResultsPage';
 
 export default function Quiz() {
@@ -34,6 +34,8 @@ export default function Quiz() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [flagComment, setFlagComment] = useState('');
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [imageZoom, setImageZoom] = useState(1);
   const [questionFontSize, setQuestionFontSize] = useState('2.5rem');
   const questionRef = useRef(null);
   const containerRef = useRef(null);
@@ -59,6 +61,67 @@ export default function Quiz() {
       setFlagComment(comment || '');
     }
   }, [showFlagModal, currentQuestion]);
+
+  // Reset zoom when image modal opens/closes
+  useEffect(() => {
+    if (showImageModal) {
+      setImageZoom(1);
+    }
+  }, [showImageModal]);
+
+  // Handle scroll wheel zoom for image modal
+  useEffect(() => {
+    const handleWheel = (e) => {
+      if (!showImageModal) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setImageZoom(prev => Math.max(0.5, Math.min(3, prev + delta)));
+    };
+
+    if (showImageModal) {
+      window.addEventListener('wheel', handleWheel, { passive: false });
+    }
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, [showImageModal]);
+
+  // Handle touch pinch for mobile
+  useEffect(() => {
+    let initialDistance = 0;
+    let initialZoom = 1;
+
+    const handleTouchStart = (e) => {
+      if (!showImageModal || e.touches.length !== 2) return;
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      initialDistance = Math.hypot(
+        touch1.clientX - touch2.clientX,
+        touch1.clientY - touch2.clientY
+      );
+      initialZoom = imageZoom;
+    };
+
+    const handleTouchMove = (e) => {
+      if (!showImageModal || e.touches.length !== 2) return;
+      e.preventDefault();
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(
+        touch1.clientX - touch2.clientX,
+        touch1.clientY - touch2.clientY
+      );
+      const scale = distance / initialDistance;
+      setImageZoom(Math.max(0.5, Math.min(3, initialZoom * scale)));
+    };
+
+    if (showImageModal) {
+      window.addEventListener('touchstart', handleTouchStart, { passive: false });
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    }
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [showImageModal, imageZoom]);
 
   // Dynamic font sizing for question
   useEffect(() => {
@@ -161,7 +224,6 @@ export default function Quiz() {
 
   const handleQuizComplete = async () => {
     console.log('🔄 Quiz complete function called');
-    console.log('📝 Current answers:', answers);
     
     // Store answers in sessionStorage for review
     sessionStorage.setItem('quizAnswers', JSON.stringify(answers));
@@ -185,6 +247,9 @@ export default function Quiz() {
     };
     
     console.log('📊 Results object:', results);
+    
+    // Store results in sessionStorage
+    sessionStorage.setItem('quizResults', JSON.stringify(results));
     
     setQuizResults(results);
     endQuiz(results);
@@ -379,13 +444,16 @@ export default function Quiz() {
             >
               {currentQuestion.question}
             </h2>
-            {currentQuestion.image_url && (
-              <img
-                src={currentQuestion.image_url}
-                alt="Question"
-                className="max-h-24 w-auto mx-auto mt-3 rounded-xl"
-                onError={(e) => e.target.style.display = 'none'}
-              />
+            
+            {/* View Image Button */}
+            {currentQuestion.image_url && currentQuestion.image_url.trim() !== '' && (
+              <button
+                onClick={() => setShowImageModal(true)}
+                className="mt-2 px-3 py-1 rounded-xl bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70 transition-all text-[10px] flex items-center gap-1.5 mx-auto border border-white/5 hover:border-white/10"
+              >
+                <Image className="w-3.5 h-3.5" />
+                View Image
+              </button>
             )}
           </div>
         </div>
@@ -485,6 +553,43 @@ export default function Quiz() {
           </div>
         )}
       </div>
+
+      {/* Image Modal - Modern Clean Version */}
+      {showImageModal && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center bg-black/85 backdrop-blur-md z-50"
+          onClick={() => setShowImageModal(false)}
+        >
+          {/* Back Arrow */}
+          <button
+            onClick={() => setShowImageModal(false)}
+            className="absolute top-6 left-6 z-10 p-2.5 rounded-full bg-white/5 hover:bg-white/15 transition-all text-white/60 hover:text-white backdrop-blur-sm border border-white/5"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          
+          {/* Image Container */}
+          <div 
+            className="max-w-[90vw] max-h-[85vh] flex items-center justify-center p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={currentQuestion.image_url}
+              alt="Question figure"
+              className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-xl shadow-2xl select-none"
+              style={{
+                transform: `scale(${imageZoom})`,
+                transition: 'transform 0.15s ease-out',
+                transformOrigin: 'center center',
+              }}
+              draggable={false}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Flag Modal */}
       {showFlagModal && (
