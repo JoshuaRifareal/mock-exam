@@ -672,10 +672,52 @@ export default function Quiz() {
             />
           </div>
           
-          {/* Zoom indicator (optional - shows briefly) */}
-          {imageZoom !== 1 && (
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white/60 text-xs">
-              {Math.round(imageZoom * 100)}%
+          {/* Zoom Slider - Sleek Mobile Version */}
+          {window.innerWidth < 768 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] max-w-sm px-3 py-2 rounded-xl bg-white/5 backdrop-blur-sm border border-white/5">
+              <div className="flex items-center gap-2.5">
+                <ZoomOut className="w-3.5 h-3.5 mb-2 text-white/30 flex-shrink-0" />
+                
+                <div className="flex-1 relative">
+                  <input
+                    type="range"
+                    min="50"
+                    max="300"
+                    step="10"
+                    value={imageZoom * 100}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) / 100;
+                      setImageZoom(Math.max(0.5, Math.min(3, value)));
+                      if (value <= 1) {
+                        setImagePosition({ x: 0, y: 0 });
+                      }
+                    }}
+                    className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.3) ${(imageZoom - 0.5) / 2.5 * 100}%, rgba(255,255,255,0.05) ${(imageZoom - 0.5) / 2.5 * 100}%, rgba(255,255,255,0.05) 100%)`,
+                    }}
+                  />
+                  
+                  {/* Tick marks */}
+                  <div className="flex justify-between px-0.5 mt-1">
+                    {[0.5, 1.0, 1.5, 2.0, 2.5, 3.0].map((val) => (
+                      <div key={val} className="flex flex-col items-center">
+                        <div className={`w-0.5 h-1 rounded-full ${val === 1.0 ? 'bg-white/30' : 'bg-white/10'}`} />
+                        <span className={`text-[5px] mt-0.5 ${val === 1.0 ? 'text-white/30' : 'text-white/10'}`}>
+                          {val === 0.5 ? '0.5' : 
+                          val === 1.0 ? '1.0' : 
+                          val === 1.5 ? '1.5' :
+                          val === 2.0 ? '2.0' :
+                          val === 2.5 ? '2.5' : '3.0'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                <ZoomIn className="w-3.5 h-3.5 mb-2 text-white/30 flex-shrink-0" />
+
+              </div>
             </div>
           )}
         </div>
