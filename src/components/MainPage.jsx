@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useGoogleLogin } from '@react-oauth/google';
 import { useQuizStore } from '../stores/quizStore';
 import { useUserStore } from '../stores/userStore';
 import { useTheme } from '../contexts/ThemeContext';
@@ -10,7 +9,7 @@ import {
   Award, TrendingUp, BookOpen,
   Sparkles, BarChart3, ChevronDown,
   Database, CheckCircle2, AlertCircle,
-  RefreshCw
+  RefreshCw, Focus, GraduationCap, BarChart4
 } from 'lucide-react';
 
 export default function MainPage() {
@@ -27,13 +26,24 @@ export default function MainPage() {
     numQuestions: 10,
     timeLimit: 0.5,
     focusMode: false,
-    distribution: {
-      'Sanitation, Plumbing Design, and Installation': 40,
-      'Practical Problems and Experiences': 40,
-      'Plumbing Arithmetic': 10,
-      'Plumbing Code': 10,
-    },
+    masterMode: false,
+    distribution: {},
   });
+
+  // Auto-start quiz from retry button
+  useEffect(() => {
+    const autoStart = sessionStorage.getItem('autoStartQuiz');
+    if (autoStart === 'true') {
+      sessionStorage.removeItem('autoStartQuiz');
+      if (allQuestions.length > 0 && !loading) {
+        console.log('🚀 Auto-starting quiz from retry');
+        const selectedQuestions = selectQuestions(allQuestions, settings);
+        setQuestions(selectedQuestions);
+        setSettings(settings);
+        startQuiz();
+      }
+    }
+  }, [allQuestions, settings, loading]);
 
   useEffect(() => {
     loadData();
@@ -51,14 +61,12 @@ export default function MainPage() {
         calculateStats(questions, progress);
       }
       
-      // Get subjects that actually exist in the questions - filter out empty/blank
       const availableSubjects = [...new Set(
         questions
           .map(q => q.subject)
-          .filter(subject => subject && subject.trim() !== '') // Only non-empty subjects
+          .filter(subject => subject && subject.trim() !== '')
       )];
       
-      // Define the default distribution values for when subjects exist
       const defaultDistribution = {
         'Sanitation, Plumbing Design, and Installation': 40,
         'Practical Problems and Experiences': 40,
@@ -66,11 +74,9 @@ export default function MainPage() {
         'Plumbing Code': 10,
       };
       
-      // Only include subjects that exist in the questions
       const distribution = {};
       let total = 0;
       
-      // Add default subjects if they exist in questions
       availableSubjects.forEach(subject => {
         if (defaultDistribution[subject] !== undefined) {
           distribution[subject] = defaultDistribution[subject];
@@ -78,7 +84,6 @@ export default function MainPage() {
         }
       });
       
-      // Handle any remaining subjects not in default
       const remainingSubjects = availableSubjects.filter(s => !distribution[s]);
       if (remainingSubjects.length > 0) {
         const remainingPercent = 100 - total;
@@ -88,11 +93,9 @@ export default function MainPage() {
         });
       }
       
-      // If no subjects at all, show empty distribution
       if (Object.keys(distribution).length === 0) {
         setSettingsLocal(prev => ({ ...prev, distribution: {} }));
       } else {
-        // Ensure total is 100%
         const currentTotal = Object.values(distribution).reduce((a, b) => a + b, 0);
         if (currentTotal !== 100) {
           const factor = 100 / currentTotal;
@@ -100,7 +103,6 @@ export default function MainPage() {
             distribution[key] = Math.round(distribution[key] * factor);
           });
         }
-        
         setSettingsLocal(prev => ({ ...prev, distribution }));
       }
     } catch (error) {
@@ -109,60 +111,12 @@ export default function MainPage() {
       setLoading(false);
     }
   };
-  const reLogin = useGoogleLogin({
-    onSuccess: async (response) => {
-      console.log('Re-login success:', response);
-      
-      const userData = {
-        access_token: response.access_token,
-        token_type: response.token_type,
-        expires_in: response.expires_in,
-        scope: response.scope,
-        authuser: response.authuser,
-        prompt: response.prompt,
-        timestamp: Date.now(),
-      };
-      
-      localStorage.setItem('quizUser', JSON.stringify(userData));
-      
-      try {
-        const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: {
-            Authorization: `Bearer ${response.access_token}`,
-          },
-        });
-        const profile = await profileRes.json();
-        
-        const fullUserData = {
-          ...userData,
-          ...profile,
-          email: profile.email,
-          name: profile.name,
-          picture: profile.picture,
-        };
-        
-        localStorage.setItem('quizUser', JSON.stringify(fullUserData));
-        setUser(fullUserData);
-        await loadData(); // Make sure this is called
-        setShowUserMenu(false);
-        
-      } catch (error) {
-        console.error('Error fetching profile during re-login:', error);
-      }
-    },
-    onError: (error) => {
-      console.error('Re-login error:', error);
-    },
-    scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
-    prompt: 'consent',
-  });
 
   const calculateStats = (questions, progress) => {
     const totalAttempts = progress.length;
     const correctAttempts = progress.filter(p => p.correct > 0).length;
     const accuracy = totalAttempts > 0 ? (correctAttempts / totalAttempts) * 100 : 0;
     
-    // Only count subjects that have non-empty values
     const subjects = [...new Set(
       questions
         .map(q => q.subject)
@@ -178,18 +132,55 @@ export default function MainPage() {
     });
   };
 
-  // Calculate subject performance
-  const getSubjectPerformance = () => {
-    if (!allQuestions.length || !userProgress.length) return [];
+  // Calculate attempts per subject
+  const getSubjectAttempts = () => {
+    if (!allQuestions.length) return [];
     
-    // Get unique subjects from questions (filter out empty)
     const subjects = [...new Set(
       allQuestions
         .map(q => q.subject)
         .filter(s => s && s.trim() !== '')
     )];
     
-    // Calculate performance per subject
+    return subjects.map(subject => {
+      const subjectQuestions = allQuestions.filter(q => q.subject === subject);
+      const subjectProgress = userProgress.filter(p => 
+        subjectQuestions.some(q => q.id === p.questionId)
+      );
+      
+      const attempted = subjectProgress.length;
+      const total = subjectQuestions.length;
+      const percentage = total > 0 ? Math.round((attempted / total) * 100) : 0;
+      const isComplete = attempted >= total;
+      
+      return {
+        name: subject,
+        attempted,
+        total,
+        percentage,
+        isComplete,
+      };
+    });
+  };
+
+  // Calculate total attempts across all subjects
+  const getTotalAttempts = () => {
+    const subjectAttempts = getSubjectAttempts();
+    const totalAttempted = subjectAttempts.reduce((sum, s) => sum + s.attempted, 0);
+    const totalQuestions = subjectAttempts.reduce((sum, s) => sum + s.total, 0);
+    return { attempted: totalAttempted, total: totalQuestions };
+  };
+
+  // Get subject performance data
+  const getSubjectPerformance = () => {
+    if (!allQuestions.length) return [];
+    
+    const subjects = [...new Set(
+      allQuestions
+        .map(q => q.subject)
+        .filter(s => s && s.trim() !== '')
+    )];
+    
     return subjects.map(subject => {
       const subjectQuestions = allQuestions.filter(q => q.subject === subject);
       const subjectProgress = userProgress.filter(p => 
@@ -206,33 +197,111 @@ export default function MainPage() {
         correct,
         accuracy,
       };
-    }).sort((a, b) => b.accuracy - a.accuracy); // Sort by accuracy descending
-  };
-
-  const handleStartQuiz = () => {
-    if (allQuestions.length === 0) return;
-    
-    // Ensure numQuestions doesn't exceed available questions
-    let validatedSettings = { ...settings };
-    if (settings.numQuestions > allQuestions.length) {
-      validatedSettings.numQuestions = allQuestions.length;
-      setSettingsLocal(validatedSettings);
-    }
-    
-    const selectedQuestions = selectQuestions(allQuestions, validatedSettings);
-    setQuestions(selectedQuestions);
-    setSettings(validatedSettings);
-    startQuiz();
+    }).sort((a, b) => b.accuracy - a.accuracy);
   };
 
   const selectQuestions = (questions, settings) => {
-    let { numQuestions, distribution } = settings;
-  
-    // Cap numQuestions to available questions to avoid exceeding
-    if (numQuestions > questions.length) {
-      numQuestions = questions.length;
+    let { numQuestions, distribution, focusMode, masterMode } = settings;
+    
+    let availableQuestions = [...questions];
+    
+    // If master mode is on, only include unanswered questions
+    if (masterMode) {
+      const answeredIds = userProgress.map(p => p.questionId);
+      availableQuestions = questions.filter(q => !answeredIds.includes(q.id));
+      console.log(`📝 Master mode: ${availableQuestions.length} unanswered questions available`);
     }
+    
+    // If focus mode is on, prioritize wrong answers
+    if (focusMode && !masterMode) {
+      const wrongIds = userProgress
+        .filter(p => p.correct === 0)
+        .map(p => p.questionId);
+      
+      const weightedQuestions = availableQuestions.map(q => {
+        const isWrong = wrongIds.includes(q.id);
+        return {
+          ...q,
+          weight: isWrong ? 3 : 1,
+        };
+      });
+      
+      const selected = weightedRandomSelect(weightedQuestions, numQuestions, distribution);
+      return selected;
+    }
+    
+    return selectWithDistribution(availableQuestions, numQuestions, distribution);
+  };
 
+  const weightedRandomSelect = (items, count, distribution) => {
+    const subjects = {};
+    items.forEach(item => {
+      if (!subjects[item.subject]) subjects[item.subject] = [];
+      subjects[item.subject].push(item);
+    });
+    
+    const perSubject = {};
+    let remaining = count;
+    const subjectKeys = Object.keys(distribution).filter(s => subjects[s]);
+    
+    subjectKeys.forEach(subject => {
+      const target = Math.round((distribution[subject] / 100) * count);
+      const available = subjects[subject]?.length || 0;
+      perSubject[subject] = Math.min(target, available);
+      remaining -= perSubject[subject];
+    });
+    
+    if (remaining > 0) {
+      let i = 0;
+      while (remaining > 0 && subjectKeys.length > 0) {
+        const subject = subjectKeys[i % subjectKeys.length];
+        if (perSubject[subject] < (subjects[subject]?.length || 0)) {
+          perSubject[subject]++;
+          remaining--;
+        }
+        i++;
+      }
+    }
+    
+    let selected = [];
+    Object.keys(perSubject).forEach(subject => {
+      const available = subjects[subject] || [];
+      const count = perSubject[subject];
+      
+      const weightedItems = available.map(item => ({
+        ...item,
+        weight: item.weight || 1,
+      }));
+      
+      const totalWeight = weightedItems.reduce((sum, item) => sum + item.weight, 0);
+      const shuffled = [...weightedItems].sort(() => Math.random() - 0.5);
+      
+      let selectedItems = [];
+      let remainingWeight = totalWeight;
+      let tempItems = [...shuffled];
+      
+      for (let i = 0; i < Math.min(count, shuffled.length); i++) {
+        let random = Math.random() * remainingWeight;
+        let selectedIndex = 0;
+        for (let j = 0; j < tempItems.length; j++) {
+          random -= tempItems[j].weight;
+          if (random <= 0) {
+            selectedIndex = j;
+            break;
+          }
+        }
+        selectedItems.push(tempItems[selectedIndex]);
+        remainingWeight -= tempItems[selectedIndex].weight;
+        tempItems.splice(selectedIndex, 1);
+      }
+      
+      selected = [...selected, ...selectedItems];
+    });
+    
+    return selected.sort(() => Math.random() - 0.5);
+  };
+
+  const selectWithDistribution = (questions, numQuestions, distribution) => {
     const subjects = {};
     questions.forEach(q => {
       if (!subjects[q.subject]) subjects[q.subject] = [];
@@ -241,18 +310,19 @@ export default function MainPage() {
     
     const perSubject = {};
     let remaining = numQuestions;
-    Object.keys(distribution).forEach(subject => {
-      const count = Math.round((distribution[subject] / 100) * numQuestions);
+    const subjectKeys = Object.keys(distribution).filter(s => subjects[s]);
+    
+    subjectKeys.forEach(subject => {
+      const target = Math.round((distribution[subject] / 100) * numQuestions);
       const available = subjects[subject]?.length || 0;
-      perSubject[subject] = Math.min(count, available);
+      perSubject[subject] = Math.min(target, available);
       remaining -= perSubject[subject];
     });
     
     if (remaining > 0) {
-      const subjectsList = Object.keys(perSubject);
       let i = 0;
-      while (remaining > 0 && subjectsList.length > 0) {
-        const subject = subjectsList[i % subjectsList.length];
+      while (remaining > 0 && subjectKeys.length > 0) {
+        const subject = subjectKeys[i % subjectKeys.length];
         if (perSubject[subject] < (subjects[subject]?.length || 0)) {
           perSubject[subject]++;
           remaining--;
@@ -284,16 +354,13 @@ export default function MainPage() {
     setSettingsLocal({ ...settings, distribution: newDistribution });
   };
 
-  // Reset distribution to default values
   const resetDistribution = () => {
-    // Get subjects that exist in the questions
     const availableSubjects = [...new Set(
       allQuestions
         .map(q => q.subject)
         .filter(subject => subject && subject.trim() !== '')
     )];
     
-    // Define the default distribution values
     const defaultDistribution = {
       'Sanitation, Plumbing Design, and Installation': 40,
       'Practical Problems and Experiences': 40,
@@ -301,11 +368,9 @@ export default function MainPage() {
       'Plumbing Code': 10,
     };
     
-    // Only include subjects that exist in the questions
     const distribution = {};
     let total = 0;
     
-    // Add default subjects if they exist in questions
     availableSubjects.forEach(subject => {
       if (defaultDistribution[subject] !== undefined) {
         distribution[subject] = defaultDistribution[subject];
@@ -313,7 +378,6 @@ export default function MainPage() {
       }
     });
     
-    // Handle any remaining subjects not in default
     const remainingSubjects = availableSubjects.filter(s => !distribution[s]);
     if (remainingSubjects.length > 0) {
       const remainingPercent = 100 - total;
@@ -323,7 +387,6 @@ export default function MainPage() {
       });
     }
     
-    // Ensure total is 100%
     if (Object.keys(distribution).length > 0) {
       const currentTotal = Object.values(distribution).reduce((a, b) => a + b, 0);
       if (currentTotal !== 100) {
@@ -337,6 +400,22 @@ export default function MainPage() {
     setSettingsLocal(prev => ({ ...prev, distribution }));
   };
 
+  const handleStartQuiz = () => {
+    if (allQuestions.length === 0) return;
+    
+    sessionStorage.removeItem('autoStartQuiz');
+    
+    let validatedSettings = { ...settings };
+    if (settings.numQuestions > allQuestions.length) {
+      validatedSettings.numQuestions = allQuestions.length;
+    }
+    
+    const selectedQuestions = selectQuestions(allQuestions, validatedSettings);
+    setQuestions(selectedQuestions);
+    setSettings(validatedSettings);
+    startQuiz();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
@@ -346,16 +425,19 @@ export default function MainPage() {
   }
 
   const isRealData = allQuestions.length > 2;
+  const subjectAttempts = getSubjectAttempts();
+  const totalAttempts = getTotalAttempts();
+  const subjectPerformance = getSubjectPerformance();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
-      {/* Header - Glass */}
-      <header className="sticky top-0 z-50 px-4 py-3 flex items-center justify-between border-b border-white/5 bg-neutral-900/95 backdrop-blur-none">
+      {/* Header */}
+      <header className="sticky top-0 z-50 px-4 py-3 flex items-center justify-between border-b border-white/5 bg-neutral-900/95">
         <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-700 to-purple-900 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-lg font-bold text-white/90">MPLE 2026</h1>
+          <h1 className="text-lg font-bold text-white/90">Mock Exam</h1>
         </div>
         
         <div className="flex items-center gap-2">
@@ -366,7 +448,6 @@ export default function MainPage() {
             {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
           
-          {/* User Menu */}
           <div className="relative">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
@@ -376,19 +457,20 @@ export default function MainPage() {
                 <img 
                   src={user.picture} 
                   alt={user.name} 
-                  className="w-7 h-7 rounded-full ring-2 ring-white/10"
+                  className="w-8 h-8 rounded-full ring-2 ring-white/10"
                 />
               ) : (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                   <User className="w-4 h-4 text-white" />
                 </div>
               )}
-              {/* Status Indicator */}
               <div className="relative">
+                <div className={`w-2.5 h-2.5 rounded-full ${isRealData ? 'bg-green-400' : 'bg-amber-400'} ring-2 ring-black/20`} />
                 {!isRealData && (
-                  <div className="inline w-3 h-3 animate-pulse">
+                  <div className="absolute -top-1 -right-1 w-3 h-3 animate-pulse">
                     <span className="relative flex h-3 w-3">
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
                     </span>
                   </div>
                 )}
@@ -396,14 +478,13 @@ export default function MainPage() {
               <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
             </button>
             
-            {/* Dropdown Menu */}
             {showUserMenu && (
               <>
                 <div 
                   className="fixed inset-0 z-40"
                   onClick={() => setShowUserMenu(false)}
                 />
-                <div className="absolute right-0 mt-2 w-64 glass-card user-dropdown p-2 z-50">
+                <div className="absolute right-0 mt-2 w-64 glass-card p-2 z-50">
                   <div className="px-3 py-2 border-b border-white/5">
                     <p className="text-sm font-medium text-white/90">{user?.name || 'User'}</p>
                     <p className="text-xs text-white/40 truncate">{user?.email}</p>
@@ -429,9 +510,8 @@ export default function MainPage() {
                   <button
                     onClick={() => { 
                       if (!isRealData) {
-                        // Clear old token and trigger re-login
                         localStorage.removeItem('quizUser');
-                        reLogin();
+                        window.location.reload();
                       }
                       setShowUserMenu(false);
                     }}
@@ -467,46 +547,46 @@ export default function MainPage() {
         </div>
       </header>
 
-      {/* Main Content - Bento Grid */}
+      {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-6">
-        {/* Stats Row - Side by Side */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* Stat Cards */}
-          <div className="glass-card p-6">
+        {/* Stats Row */}
+        <div className="flex-shrink-0 grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="glass-card p-4">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
-                <BookOpen className="w-6 h-6 text-blue-400" />
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
+                <BookOpen className="w-5 h-5 text-blue-400" />
               </div>
               <div>
-                <p className="text-sm text-white/40">Questions</p>
-                <p className="text-2xl font-bold text-white">{allQuestions.length}</p>
+                <p className="text-xs text-white/40">Total Questions</p>
+                <p className="text-xl font-bold text-white">{allQuestions.length}</p>
               </div>
-              <div className="ml-auto w-12 h-12 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                <Target className="w-6 h-6 text-green-400" />
+
+              <div className="ml-auto w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <Award className="w-5 h-5 text-orange-400" />
               </div>
               <div>
-                <p className="text-sm text-white/40">Passing</p>
-                <p className="text-2xl font-bold text-white">{Math.round(stats?.accuracy || 0)}%</p>
+                <p className="text-xs text-white/40">Attempted</p>
+                <p className="text-xl font-bold text-white">{totalAttempts.attempted}</p>
               </div>
             </div>
           </div>
 
-          {/* Quick Stats */}
-          <div className="glass-card p-6">
+          <div className="glass-card p-4">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center flex-shrink-0">
-                <BarChart3 className="w-6 h-6 text-purple-400" />
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center flex-shrink-0">
+                <BarChart3 className="w-5 h-5 text-purple-400" />
               </div>
               <div>
-                <p className="text-sm text-white/40">Subjects</p>
-                <p className="text-2xl font-bold text-white">{stats?.subjects || 0}</p>
+                <p className="text-xs text-white/40">Subjects</p>
+                <p className="text-xl font-bold text-white">{stats?.subjects || 0}</p>
               </div>
-              <div className="ml-auto w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center flex-shrink-0">
-                <Award className="w-6 h-6 text-orange-400" />
+
+              <div className="ml-auto w-11 h-11 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                <Target className="w-5 h-5 text-green-400" />
               </div>
               <div>
-                <p className="text-sm text-white/40">Attempted</p>
-                <p className="text-2xl font-bold text-white">{stats?.totalAttempts || 0}</p>
+                <p className="text-xs text-white/40">Passing Rate</p>
+                <p className="text-xl font-bold text-white">{Math.round(stats?.accuracy || 0)}%</p>
               </div>
             </div>
           </div>
@@ -515,50 +595,48 @@ export default function MainPage() {
         {/* Subject Performance Card */}
         <div className="glass-card p-5 mb-4">
           <h2 className="text-base font-bold text-white/90 mb-4 flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-blue-400" />
+            <BarChart4 className="w-4 h-4 text-blue-400" />
             Subject Performance
           </h2>
           <div className="space-y-3">
             {allQuestions.length > 0 && userProgress.length > 0 ? (
-              <>
-                {getSubjectPerformance().map((subject) => (
-                  <div key={subject.name} className="group">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-white/70 truncate flex-1 mr-4">
-                        {subject.name}
-                      </span>
-                      <span className="text-sm font-bold text-white flex-shrink-0">
-                        {subject.accuracy}%
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-700 ease-out ${
-                            subject.accuracy >= 70 ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
-                            subject.accuracy >= 50 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' :
-                            'bg-gradient-to-r from-red-500 to-rose-400'
-                          }`}
-                          style={{ 
-                            width: `${Math.min(subject.accuracy, 100)}%`,
-                            transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-between mt-0.5">
-                      <span className="text-[10px] text-white/30">
-                        {subject.correct}/{subject.attempted} attempts
-                      </span>
-                      <span className="text-[10px] text-white/20">
-                        {subject.accuracy >= 70 ? '🟢' :
-                        subject.accuracy >= 50 ? '🟡' :
-                        '🔴'}
-                      </span>
+              subjectPerformance.map((subject) => (
+                <div key={subject.name} className="group">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-white/70 truncate flex-1 mr-4">
+                      {subject.name}
+                    </span>
+                    <span className="text-sm font-bold text-white flex-shrink-0">
+                      {subject.accuracy}%
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-700 ease-out ${
+                          subject.accuracy >= 70 ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
+                          subject.accuracy >= 50 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' :
+                          'bg-gradient-to-r from-red-500 to-rose-400'
+                        }`}
+                        style={{ 
+                          width: `${Math.min(subject.accuracy, 100)}%`,
+                          transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+                        }}
+                      />
                     </div>
                   </div>
-                ))}
-              </>
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[10px] text-white/30">
+                      {subject.correct}/{subject.attempted} attempts
+                    </span>
+                    <span className="text-[10px] text-white/20">
+                      {subject.accuracy >= 70 ? '🟢' :
+                       subject.accuracy >= 50 ? '🟡' :
+                       '🔴'}
+                    </span>
+                  </div>
+                </div>
+              ))
             ) : (
               <div className="text-center text-white/40 text-sm py-6">
                 <p>No performance data yet.</p>
@@ -568,149 +646,221 @@ export default function MainPage() {
           </div>
         </div>
 
+        {/* Attempts per Subject Card */}
+        <div className="glass-card p-5 mb-4">
+          <h2 className="text-base font-bold text-white/90 mb-4 flex items-center gap-2">
+            <BarChart4 className="w-4 h-4 text-green-400" />
+            Attempts per Subject
+          </h2>
+          <div className="space-y-3">
+            {allQuestions.length > 0 && userProgress.length > 0 ? (
+              subjectAttempts.map((subject) => (
+                <div key={subject.name} className="group">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-white/70 truncate flex-1 mr-4">
+                      {subject.name}
+                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className={`text-sm font-bold ${
+                        subject.isComplete ? 'text-green-400' :
+                        subject.percentage >= 50 ? 'text-yellow-400' :
+                        'text-red-400'
+                      }`}>
+                        {subject.percentage}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-700 ease-out ${
+                          subject.isComplete ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
+                          subject.percentage >= 50 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' :
+                          'bg-gradient-to-r from-red-500 to-rose-400'
+                        }`}
+                        style={{ 
+                          width: `${Math.min(subject.percentage, 100)}%`,
+                          transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between pt-0 mt-0">
+                    <span>
+                      <span className="text-[10px] text-white/100">
+                        {subject.attempted}/{subject.total}
+                      </span>
+                      <span className="text-[10px] text-white/30 pl-3">
+                        {subject.isComplete ? '✅ Complete' : `${subject.total - subject.attempted} remaining`}
+                      </span>
+                    </span>
+                    <span className="text-[10px] text-white/20">
+                      {subject.isComplete ? '🟢' :
+                       subject.percentage >= 50 ? '🟡' :
+                       '🔴'}
+                    </span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center text-white/40 text-sm py-6">
+                <p>No attempt data yet.</p>
+                <p className="text-xs mt-1">Start a quiz to track your progress!</p>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Main Settings - Bento Large */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {/* Quiz Settings */}
-          <div className="glass-card p-6 md:col-span-3">
-            <h2 className="text-lg font-bold text-white/90 mb-6 flex items-center gap-2">
-              <Zap className="w-5 h-5 text-yellow-400" />
+          <div className="glass-card p-5 md:col-span-3 flex flex-col">
+            <h2 className="text-base font-bold text-white/90 mb-4 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-yellow-400" />
               Quiz Settings
             </h2>
 
-            {/* Questions Slider */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs text-white/60 flex items-center gap-2">
-                  <Layers className="w-3.5 h-3.5" />
-                  Questions
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="text-base font-bold text-white">{settings.numQuestions} items</span>
-                  {allQuestions.length > 0 && settings.numQuestions > allQuestions.length && (
-                    <span className="text-[10px] text-amber-400 animate-pulse">
-                      (Max: {allQuestions.length})
-                    </span>
-                  )}
+            <div className="space-y-4">
+              {/* Questions Slider */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs text-white/60 flex items-center gap-2">
+                    <Layers className="w-3.5 h-3.5" />
+                    Questions
+                  </label>
+                  <span className="text-base font-bold text-white">{settings.numQuestions}</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="range"
+                    min="5"
+                    max="50"
+                    step="5"
+                    value={settings.numQuestions}
+                    onChange={(e) => setSettingsLocal({ ...settings, numQuestions: parseInt(e.target.value) })}
+                    className="w-full slider-thick"
+                  />
+                  <div className="flex justify-between px-0.5 mt-0.5">
+                    {[5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map((val) => (
+                      <div key={val} className="flex flex-col items-center">
+                        <div className="w-0.5 h-1.5 bg-white/20 rounded-full" />
+                        <span className="text-[6px] text-white/20 mt-0.5">{val}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className="relative">
-                <input
-                  type="range"
-                  min="10"
-                  max="100"
-                  step="10"
-                  value={settings.numQuestions}
-                  onChange={(e) => {
-                    let value = parseInt(e.target.value);
-                    setSettingsLocal({ ...settings, numQuestions: value });
-                  }}
-                  className="w-full slider-thick"
-                />
-                <div className="flex justify-between px-0.5 mt-0.5">
-                  {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((val) => {
-                    const isDisabled = allQuestions.length > 0 && val > allQuestions.length;
-                    return (
+
+              {/* Time Slider */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs text-white/60 flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5" />
+                    Time Limit
+                  </label>
+                  <span className="text-base font-bold text-white">
+                    {settings.timeLimit === 0.5 ? '30m' : 
+                     settings.timeLimit === 1 ? '1h' :
+                     settings.timeLimit === 1.5 ? '1h 30m' :
+                     settings.timeLimit === 2 ? '2h' :
+                     settings.timeLimit === 2.5 ? '2h 30m' :
+                     settings.timeLimit === 3 ? '3h' :
+                     settings.timeLimit === 3.5 ? '3h 30m' :
+                     settings.timeLimit === 4 ? '4h' :
+                     settings.timeLimit === 4.5 ? '4h 30m' :
+                     settings.timeLimit === 5 ? '5h' :
+                     settings.timeLimit === 5.5 ? '5h 30m' :
+                     settings.timeLimit === 6 ? '6h' :
+                     settings.timeLimit === 6.5 ? '6h 30m' :
+                     settings.timeLimit === 7 ? '7h' :
+                     settings.timeLimit === 7.5 ? '7h 30m' :
+                     settings.timeLimit === 8 ? '8h' : `${settings.timeLimit}h`}
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="8"
+                    step="0.5"
+                    value={settings.timeLimit}
+                    onChange={(e) => setSettingsLocal({ ...settings, timeLimit: parseFloat(e.target.value) })}
+                    className="w-full slider-thick"
+                  />
+                  <div className="flex justify-between px-0.5 mt-0.5">
+                    {[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8].map((val) => (
                       <div key={val} className="flex flex-col items-center">
-                        <div className={`w-0.5 h-1.5 rounded-full ${isDisabled ? 'bg-white/5' : 'bg-white/20'}`} />
-                        <span className={`text-[6px] mt-0.5 ${isDisabled ? 'text-white/5' : 'text-white/20'}`}>
-                          {val}
+                        <div className={`w-0.5 h-1.5 rounded-full ${val % 1 === 0 ? 'bg-white/30' : 'bg-white/10'}`} />
+                        <span className={`text-[5px] mt-0.5 ${val % 1 === 0 ? 'text-white/30' : 'text-white/10'}`}>
+                          {val === 0.5 ? '30m' : 
+                           val === 1 ? '1h' :
+                           val === 1.5 ? '1.5h' :
+                           val === 2 ? '2h' :
+                           val === 2.5 ? '2.5h' :
+                           val === 3 ? '3h' :
+                           val === 3.5 ? '3.5h' :
+                           val === 4 ? '4h' :
+                           val === 4.5 ? '4.5h' :
+                           val === 5 ? '5h' :
+                           val === 5.5 ? '5.5h' :
+                           val === 6 ? '6h' :
+                           val === 6.5 ? '6.5h' :
+                           val === 7 ? '7h' :
+                           val === 7.5 ? '7.5h' :
+                           val === 8 ? '8h' : ''}
                         </span>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Time Slider */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs text-white/60 flex items-center gap-2">
-                  <Clock className="w-3.5 h-3.5" />
-                  Time Limit
-                </label>
-                <span className="text-base font-bold text-white">
-                  {settings.timeLimit === 0.5 ? '30 mins' : 
-                  settings.timeLimit === 1 ? '1 hr' :
-                  settings.timeLimit === 1.5 ? '1.5 hrs' :
-                  settings.timeLimit === 2 ? '2 hrs' :
-                  settings.timeLimit === 2.5 ? '2.5 hrs' :
-                  settings.timeLimit === 3 ? '3 hrs' :
-                  settings.timeLimit === 3.5 ? '3.5 hrs' :
-                  settings.timeLimit === 4 ? '4 hrs' :
-                  settings.timeLimit === 4.5 ? '4.5 hrs' :
-                  settings.timeLimit === 5 ? '5 hrs' :
-                  settings.timeLimit === 5.5 ? '5.5 hrs' :
-                  settings.timeLimit === 6 ? '6 hrs' :
-                  settings.timeLimit === 6.5 ? '6.5 hrs' :
-                  settings.timeLimit === 7 ? '7 hrs' :
-                  settings.timeLimit === 7.5 ? '7.5 hrs' :
-                  settings.timeLimit === 8 ? '8 hrs' : `${settings.timeLimit}h`}
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  type="range"
-                  min="0.5"
-                  max="8"
-                  step="0.5"
-                  value={settings.timeLimit}
-                  onChange={(e) => setSettingsLocal({ ...settings, timeLimit: parseFloat(e.target.value) })}
-                  className="w-full slider-thick"
-                />
-                <div className="flex justify-between px-0.5 mt-0.5">
-                  {[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8].map((val) => (
-                    <div key={val} className="flex flex-col items-center">
-                      <div className={`w-0.5 h-1.5 rounded-full ${val % 1 === 0 ? 'bg-white/30' : 'bg-white/10'}`} />
-                      <span className={`text-[5px] mt-0.5 ${val % 1 === 0 ? 'text-white/30' : 'text-white/10'}`}>
-                        {val === 0.5 ? '30m' : 
-                        val === 1 ? '1h' :
-                        val === 1.5 ? '1.5h' :
-                        val === 2 ? '2h' :
-                        val === 2.5 ? '2.5h' :
-                        val === 3 ? '3h' :
-                        val === 3.5 ? '3.5h' :
-                        val === 4 ? '4h' :
-                        val === 4.5 ? '4.5h' :
-                        val === 5 ? '5h' :
-                        val === 5.5 ? '5.5h' :
-                        val === 6 ? '6h' :
-                        val === 6.5 ? '6.5h' :
-                        val === 7 ? '7h' :
-                        val === 7.5 ? '7.5h' :
-                        val === 8 ? '8h' : ''}
-                      </span>
-                    </div>
-                  ))}
+              {/* Focus Mode Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+                <div className="flex items-center gap-3">
+                  <Focus className="w-4 h-4 text-blue-400" />
+                  <div>
+                    <p className="text-sm font-medium text-white/90">Focus Mode</p>
+                    <p className="text-[10px] text-white/40">Prioritize questions with incorrect attempts</p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setSettingsLocal({ ...settings, focusMode: !settings.focusMode })}
+                  className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${
+                    settings.focusMode ? 'bg-gradient-to-r from-blue-500 to-purple-500' : 'bg-white/10'
+                  }`}
+                >
+                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-lg transition-transform ${
+                    settings.focusMode ? 'translate-x-5' : 'translate-x-0.5'
+                  }`} />
+                </button>
               </div>
-              <br />
-            </div>
 
-            {/* Focus Mode Toggle */}
-            <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5">
-              <div className="flex items-center gap-3">
-                <Target className="w-5 h-5 text-blue-400" />
-                <div>
-                  <p className="text-sm font-medium text-white/90">Focus on weak subjects</p>
-                  <p className="text-xs text-white/40">Prioritize questions you've struggled with</p>
+              {/* Master Mode Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+                <div className="flex items-center gap-3">
+                  <GraduationCap className="w-4 h-4 text-purple-400" />
+                  <div>
+                    <p className="text-sm font-medium text-white/90">Master Mode</p>
+                    <p className="text-[10px] text-white/40">Only include unanswered questions</p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setSettingsLocal({ ...settings, masterMode: !settings.masterMode })}
+                  className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${
+                    settings.masterMode ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-white/10'
+                  }`}
+                >
+                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-lg transition-transform ${
+                    settings.masterMode ? 'translate-x-5' : 'translate-x-0.5'
+                  }`} />
+                </button>
               </div>
-              <button
-                onClick={() => setSettingsLocal({ ...settings, focusMode: !settings.focusMode })}
-                className={`relative w-12 h-6 rounded-full transition-colors ${
-                  settings.focusMode ? 'bg-gradient-to-r from-blue-500 to-purple-500' : 'bg-white/10'
-                }`}
-              >
-                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-lg transition-transform ${
-                  settings.focusMode ? 'translate-x-6' : 'translate-x-0.5'
-                }`} />
-              </button>
             </div>
           </div>
 
           {/* Subject Distribution */}
-          <div className="glass-card p-5 md:col-span-2 flex flex-col overflow-hidden">
+          <div className="glass-card p-5 md:col-span-2 flex flex-col">
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <h2 className="text-base font-bold text-white/90 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-green-400" />
@@ -766,21 +916,20 @@ export default function MainPage() {
               )}
             </div>
           </div>
-
         </div>
 
         {/* Start Button */}
         <button
           onClick={handleStartQuiz}
           disabled={allQuestions.length === 0}
-          className={`w-full mt-4 py-4 rounded-2xl font-bold text-lg transition-all relative overflow-hidden ${
+          className={`w-full mt-4 py-3.5 rounded-2xl font-bold text-base transition-all relative overflow-hidden ${
             allQuestions.length > 0
-              ? 'bg-gradient-to-r from-purple-700 to-purple-900 text-white hover:shadow-xl hover:shadow-purple-700/25 hover:scale-[1.01]'
+              ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:shadow-xl hover:shadow-blue-500/25 hover:scale-[1.01]'
               : 'bg-white/5 text-white/30 cursor-not-allowed'
           }`}
         >
           <span className="relative z-10 flex items-center justify-center gap-2">
-            {allQuestions.length > 0 ? 'Start Exam' : 'No Questions Available'}
+            {allQuestions.length > 0 ? '🚀 Start Quiz' : 'No Questions Available'}
           </span>
           {allQuestions.length > 0 && (
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent shimmer" />

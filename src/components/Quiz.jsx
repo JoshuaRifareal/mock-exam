@@ -19,6 +19,10 @@ export default function Quiz() {
     getProgressQueue,
     clearProgressQueue,
     addWrongAnswer,
+    flagQuestion,
+    unflagQuestion,
+    isQuestionFlagged,
+    getFlagComment,
   } = useQuizStore();
   const { user } = useUserStore();
   
@@ -28,23 +32,14 @@ export default function Quiz() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [quizResults, setQuizResults] = useState(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showFlagModal, setShowFlagModal] = useState(false);
+  const [flagComment, setFlagComment] = useState('');
   const [questionFontSize, setQuestionFontSize] = useState('2.5rem');
   const questionRef = useRef(null);
   const containerRef = useRef(null);
 
   const currentQuestion = questions[currentIndex];
   const totalQuestions = questions.length;
-
-  // Get flag actions from store
-  const flaggedQuestions = useQuizStore((state) => state.flaggedQuestions);
-  const flagQuestion = useQuizStore((state) => state.flagQuestion);
-  const unflagQuestion = useQuizStore((state) => state.unflagQuestion);
-  const isQuestionFlagged = useQuizStore((state) => state.isQuestionFlagged);
-  const getFlagComment = useQuizStore((state) => state.getFlagComment);
-
-  // Local state for flag modal
-  const [showFlagModal, setShowFlagModal] = useState(false);
-  const [flagComment, setFlagComment] = useState('');
 
   // Subscribe to store results
   const storeResults = useQuizStore((state) => state.results);
@@ -57,6 +52,14 @@ export default function Quiz() {
     }
   }, [storeResults]);
 
+  // Load flag comment when modal opens
+  useEffect(() => {
+    if (showFlagModal && currentQuestion) {
+      const comment = getFlagComment(currentQuestion.id);
+      setFlagComment(comment || '');
+    }
+  }, [showFlagModal, currentQuestion]);
+
   // Dynamic font sizing for question
   useEffect(() => {
     if (questionRef.current && containerRef.current) {
@@ -65,11 +68,9 @@ export default function Quiz() {
         const containerWidth = containerRef.current?.clientWidth || 0;
         const textLength = currentQuestion?.question?.length || 0;
         
-        // Skip if container is not available
         if (!containerHeight) return;
         
-        // More aggressive sizing
-        let size = 3.0; // rem
+        let size = 3.0;
         if (textLength > 150) size = 1.2;
         else if (textLength > 130) size = 1.4;
         else if (textLength > 110) size = 1.6;
@@ -78,17 +79,13 @@ export default function Quiz() {
         else if (textLength > 50) size = 2.2;
         else if (textLength > 30) size = 2.5;
         
-        // Mobile adjustment
         if (containerWidth < 480) {
           size = size * 0.8;
         } else if (containerWidth < 768) {
           size = size * 0.9;
         }
         
-        // Calculate max size based on container height
         const maxSize = containerHeight / 5.5;
-        
-        // Clamp with a lower minimum for mobile
         let minSize = 1.0;
         if (containerWidth < 480) {
           minSize = 0.8;
@@ -113,7 +110,6 @@ export default function Quiz() {
 
   const shouldUse1x4Grid = hasLongOptions();
 
-  // Timer countdown
   useEffect(() => {
     if (timeRemaining > 0 && !quizResults) {
       const timer = setInterval(() => {
@@ -128,6 +124,7 @@ export default function Quiz() {
       return () => clearInterval(timer);
     }
   }, [timeRemaining, quizResults]);
+
   const formatTime = (seconds) => {
     const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -139,7 +136,29 @@ export default function Quiz() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Quiz handlers
+  const saveQuizData = async () => {
+    console.log('💾 Saving quiz data...');
+    
+    const progressQueue = getProgressQueue();
+    if (progressQueue.length > 0 && user?.email) {
+      await saveProgressBatch({
+        userEmail: user.email,
+        progress: progressQueue,
+      });
+      clearProgressQueue();
+      console.log('✅ Progress saved');
+    }
+    
+    const flaggedQuestions = useQuizStore.getState().flaggedQuestions;
+    if (flaggedQuestions.length > 0 && user?.email) {
+      await saveFlags({
+        userEmail: user.email,
+        flaggedQuestions: flaggedQuestions,
+      });
+      console.log('✅ Flags saved');
+    }
+  };
+
   const handleQuizComplete = async () => {
     console.log('🔄 Quiz complete function called');
     
@@ -165,36 +184,8 @@ export default function Quiz() {
     setQuizResults(results);
     endQuiz(results);
     console.log('✅ Quiz results set');
-    
-    // Batch save all progress
-    const progressQueue = getProgressQueue();
-    if (progressQueue.length > 0 && user?.email) {
-      try {
-        await saveProgressBatch({
-          userEmail: user.email,
-          progress: progressQueue,
-        });
-        clearProgressQueue();
-        console.log('✅ Progress saved');
-      } catch (error) {
-        console.error('Failed to save progress batch:', error);
-      }
-    }
-
-    // After saving progress, save flags
-    const flaggedQuestions = useQuizStore.getState().flaggedQuestions;
-    if (flaggedQuestions.length > 0) {
-      try {
-        await saveFlags({
-          flaggedQuestions: flaggedQuestions,
-          userEmail: user?.email,
-        });
-        console.log('✅ Flags saved');
-      } catch (error) {
-        console.error('Failed to save flags:', error);
-      }
-    }
   };
+
   const handleOptionSelect = async (optionIndex) => {
     if (isAnswered) return;
     
@@ -207,7 +198,6 @@ export default function Quiz() {
     const isCorrect = optionIndex === currentQuestion.correctAnswer;
     console.log('✅ Answer is', isCorrect ? 'correct' : 'wrong');
     
-    // Track wrong answers for review
     if (!isCorrect) {
       addWrongAnswer(currentQuestion.id, optionIndex, currentQuestion.correctAnswer);
       console.log('❌ Wrong answer tracked:', {
@@ -220,7 +210,6 @@ export default function Quiz() {
       console.log('✅ Correct answer, not tracking');
     }
     
-    // Queue progress with subject
     queueProgress({
       questionId: currentQuestion.id,
       subject: currentQuestion.subject || '',
@@ -241,11 +230,11 @@ export default function Quiz() {
       }, 400);
     }
   };
+
   const handleExit = async (shouldSubmit) => {
     setShowExitConfirm(false);
     
     if (shouldSubmit) {
-      // Submit progress before exiting
       const progressQueue = getProgressQueue();
       if (progressQueue.length > 0 && user?.email) {
         try {
@@ -259,7 +248,6 @@ export default function Quiz() {
         }
       }
     } else {
-      // Discard progress - clear queue
       clearProgressQueue();
     }
     
@@ -267,46 +255,23 @@ export default function Quiz() {
     window.location.href = '/';
   };
 
+  const retrySave = async () => {
+    console.log('🔄 Retrying save...');
+    await saveQuizData();
+  };
+
   // Use both local and store results
   const displayResults = quizResults || storeResults;
   if (displayResults) {
     console.log('🎉 Rendering results with data:', displayResults);
     
-    const { correct, total, accuracy, timeTaken } = displayResults;
-    const isMobile = window.innerWidth < 480;
-    const ringSize = isMobile ? 100 : 140;
-    const strokeWidth = isMobile ? 6 : 8;
-    const radius = (ringSize - strokeWidth) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const progress = accuracy / 100;
-    const offset = circumference - progress * circumference;
-
-    // Determine score description
-    let description = '';
-    let gradient = '';
-
-    if (accuracy >= 90) {
-      description = 'Excellent!';
-      gradient = 'from-green-500 to-emerald-400';
-    } else if (accuracy >= 80) {
-      description = 'Great Job!';
-      gradient = 'from-blue-500 to-purple-400';
-    } else if (accuracy >= 70) {
-      description = 'Good Work!';
-      gradient = 'from-green-400 to-blue-400';
-    } else if (accuracy >= 60) {
-      description = 'Keep Studying!';
-      gradient = 'from-yellow-500 to-amber-400';
-    } else {
-      description = 'Practice More!';
-      gradient = 'from-orange-500 to-red-400';
-    }
-
     return (
       <ResultsPage 
         results={displayResults}
         formatTime={formatTime}
         resetQuiz={resetQuiz}
+        onSaveComplete={saveQuizData}
+        onRetrySave={retrySave}
       />
     );
   }
@@ -319,34 +284,38 @@ export default function Quiz() {
     );
   }
 
-  // If no current question and no results, show loading
-  if (!currentQuestion && !displayResults) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
-        <div className="w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="h-screen-safe bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950 flex flex-col p-3">
         {/* Top Bar */}
         <div className="flex items-center justify-between flex-shrink-0 px-2 py-2">
-          <button
-            onClick={() => {
-              // Show confirm dialog before exiting
-              if (getProgressQueue().length > 0) {
-                setShowExitConfirm(true);
-              } else {
-                resetQuiz();
-                window.location.href = '/';
-              }
-            }}
-            className="p-2 rounded-xl hover:bg-white/5 transition-colors text-white/60 hover:text-white"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (getProgressQueue().length > 0) {
+                  setShowExitConfirm(true);
+                } else {
+                  resetQuiz();
+                  window.location.href = '/';
+                }
+              }}
+              className="p-2 rounded-xl hover:bg-white/5 transition-colors text-white/60 hover:text-white"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            
+            {/* Flag Button */}
+            <button
+              onClick={() => setShowFlagModal(true)}
+              className={`p-2 rounded-xl transition-colors ${
+                isQuestionFlagged(currentQuestion.id) 
+                  ? 'text-yellow-400 bg-yellow-400/10' 
+                  : 'text-white/40 hover:text-white/80 hover:bg-white/5'
+              }`}
+            >
+              <Flag className="w-5 h-5" />
+            </button>
+          </div>
           
           <div className="flex items-center gap-4">
             <span className="text-sm text-white/60">
@@ -369,20 +338,9 @@ export default function Quiz() {
               </button>
             )}
           </div>
-
-          <button
-            onClick={() => setShowFlagModal(true)}
-            className={`p-2 rounded-xl transition-colors ${
-              isQuestionFlagged(currentQuestion.id) 
-                ? 'text-yellow-400 bg-yellow-400/10' 
-                : 'text-white/40 hover:text-white/80 hover:bg-white/5'
-            }`}
-            >
-            <Flag className="w-5 h-5" />
-          </button>
         </div>
 
-        {/* Progress Bar - Thicker */}
+        {/* Progress Bar */}
         <div className="progress-bar flex-shrink-0 mb-3" style={{ height: '6px' }}>
           <div 
             className="progress-bar-fill"
@@ -393,7 +351,7 @@ export default function Quiz() {
           />
         </div>
 
-        {/* Question Area - 50% with dynamic font */}
+        {/* Question Area */}
         <div 
           ref={containerRef}
           className="flex-1 flex items-center justify-center p-4 min-h-[25vh]"
@@ -427,7 +385,7 @@ export default function Quiz() {
           </div>
         </div>
 
-        {/* Options Area - 50% - Adaptive Grid */}
+        {/* Options Area */}
         <div className={`flex-1 grid gap-3 min-h-[30vh] pb-2 ${
           shouldUse1x4Grid ? 'grid-cols-1' : 'grid-cols-2'
         }`}>
@@ -493,72 +451,35 @@ export default function Quiz() {
             );
           })}
         </div>
-      </div>
 
-      {/* Hint Modal */}
-      {showHint && (
-        <div 
-          className="fixed inset-0 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm z-50"
-          onClick={() => setShowHint(false)}
-        >
+        {/* Hint Modal */}
+        {showHint && (
           <div 
-            className="glass-card p-8 max-w-md w-full text-center"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm z-50"
+            onClick={() => setShowHint(false)}
           >
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 mx-auto flex items-center justify-center mb-4">
-              <Info className="w-7 h-7 text-white" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">💡 Hint</h3>
-            <p className="text-white/70 text-sm leading-relaxed">
-              {currentQuestion.hint}
-            </p>
-            <button
-              onClick={() => setShowHint(false)}
-              className="mt-6 px-6 py-2 rounded-xl bg-white/10 text-white/80 hover:bg-white/20 transition-colors text-sm"
+            <div 
+              className="p-8 max-w-md w-full text-center rounded-2xl"
+              style={{ background: 'rgb(34, 34, 34)' }}
+              onClick={(e) => e.stopPropagation()}
             >
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Exit Confirmation Modal */}
-      {showExitConfirm && (
-        <div 
-          className="fixed inset-0 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm z-50"
-          onClick={() => setShowExitConfirm(false)}
-        >
-          <div 
-            className="glass-card p-8 max-w-md w-full"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-14 h-14 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-7 h-7 text-amber-400" />
-            </div>
-            <h4 className="text-l font-bold text-white text-center mb-2">Exit Quiz?</h4>
-            <div className="flex flex-col gap-2">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 mx-auto flex items-center justify-center mb-4">
+                <Info className="w-7 h-7 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">💡 Hint</h3>
+              <p className="text-white/70 text-sm leading-relaxed">
+                {currentQuestion.hint}
+              </p>
               <button
-                onClick={() => handleExit(true)}
-                className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold hover:shadow-lg hover:shadow-green-500/25 transition-all"
+                onClick={() => setShowHint(false)}
+                className="mt-6 px-6 py-2 rounded-xl bg-white/10 text-white/80 hover:bg-white/20 transition-colors text-sm"
               >
-                Submit
-              </button>
-              <button
-                onClick={() => handleExit(false)}
-                className="w-full px-4 py-3 rounded-xl bg-red-500/20 text-white font-semibold hover:bg-red-500/30 transition-all"
-              >
-                Discard
-              </button>
-              <button
-                onClick={() => setShowExitConfirm(false)}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 text-white/40 font-semibold hover:bg-white/5 transition-all text-sm"
-              >
-                Continue
+                Got it
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Flag Modal */}
       {showFlagModal && (
@@ -567,7 +488,8 @@ export default function Quiz() {
           onClick={() => setShowFlagModal(false)}
         >
           <div 
-            className="glass-card p-8 max-w-md w-full"
+            className="p-8 max-w-md w-full rounded-2xl"
+            style={{ background: 'rgb(34, 34, 34)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-14 h-14 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto mb-4">
@@ -631,10 +553,49 @@ export default function Quiz() {
             {isQuestionFlagged(currentQuestion.id) && (
               <div className="mt-3 p-2 rounded-lg bg-yellow-400/10 border border-yellow-400/20">
                 <p className="text-xs text-yellow-400/60 text-center">
-                  ⚠️ This question is flagged.
+                  ⚠️ This question is flagged. The comment will be saved with your report.
                 </p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Exit Confirmation Modal */}
+      {showExitConfirm && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm z-50"
+          onClick={() => setShowExitConfirm(false)}
+        >
+          <div 
+            className="p-8 max-w-md w-full rounded-2xl"
+            style={{ background: 'rgb(34, 34, 34)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-7 h-7 text-amber-400" />
+            </div>
+            <h4 className="text-xl font-bold text-white text-center mb-2">Exit Quiz?</h4>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleExit(true)}
+                className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold hover:shadow-lg hover:shadow-green-500/25 transition-all"
+              >
+                Submit
+              </button>
+              <button
+                onClick={() => handleExit(false)}
+                className="w-full px-4 py-3 rounded-xl bg-red-500/20 text-white font-semibold hover:bg-red-500/30 transition-all"
+              >
+                Discard
+              </button>
+              <button
+                onClick={() => setShowExitConfirm(false)}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 text-white/40 font-semibold hover:bg-white/5 transition-all text-sm"
+              >
+                Continue
+              </button>
+            </div>
           </div>
         </div>
       )}
