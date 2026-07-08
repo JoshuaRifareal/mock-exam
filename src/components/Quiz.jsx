@@ -96,19 +96,38 @@ export default function Quiz() {
     return () => window.removeEventListener('wheel', handleWheel);
   }, [showImageModal]);
 
-  // Handle touch pinch and pan (mobile)
+  // Handle touch pinch and pan (mobile) - restricted to image container
   useEffect(() => {
     let initialDistance = 0;
     let initialZoom = 1;
     let initialTouchPosition = { x: 0, y: 0 };
     let lastTouchPosition = { x: 0, y: 0 };
     let isPinching = false;
+    
+    // Get the image container element
+    const imageContainer = document.getElementById('image-modal-container');
+    const sliderElement = document.querySelector('.zoom-slider-container');
 
     const handleTouchStart = (e) => {
       if (!showImageModal) return;
       
+      // Check if touch is on the slider or its children
+      const target = e.target;
+      const isOnSlider = target.closest('.zoom-slider-container');
+      if (isOnSlider) {
+        console.log('Touch on slider - ignoring for pan');
+        return;
+      }
+      
+      // Check if touch is on the back button
+      if (target.closest('.back-arrow-button')) {
+        return;
+      }
+      
       if (e.touches.length === 1) {
-        // Single touch = pan
+        // Single touch = pan (only if zoomed in)
+        if (imageZoom <= 1) return;
+        
         const touch = e.touches[0];
         setIsDragging(true);
         setDragStart({ x: touch.clientX, y: touch.clientY });
@@ -124,7 +143,6 @@ export default function Quiz() {
         );
         initialZoom = imageZoom;
         
-        // Store the midpoint for zoom center
         initialTouchPosition = {
           x: (touch1.clientX + touch2.clientX) / 2,
           y: (touch1.clientY + touch2.clientY) / 2
@@ -135,6 +153,13 @@ export default function Quiz() {
 
     const handleTouchMove = (e) => {
       if (!showImageModal) return;
+      
+      // Check if touch is on the slider
+      const target = e.target;
+      const isOnSlider = target.closest('.zoom-slider-container');
+      if (isOnSlider) {
+        return;
+      }
       
       if (e.touches.length === 1 && isDragging && !isPinching) {
         // Pan with one finger (only when zoomed in)
@@ -148,7 +173,6 @@ export default function Quiz() {
         const dx = (touch.clientX - dragStart.x) / imageZoom;
         const dy = (touch.clientY - dragStart.y) / imageZoom;
         
-        // Calculate bounds to prevent dragging out of view
         const maxX = (window.innerWidth / 2) / imageZoom;
         const maxY = (window.innerHeight / 2) / imageZoom;
         
@@ -169,7 +193,6 @@ export default function Quiz() {
         const scale = distance / initialDistance;
         let newZoom = Math.max(0.5, Math.min(3, initialZoom * scale));
         
-        // If zooming out to 1 or less, reset position
         if (newZoom <= 1) {
           setImagePosition({ x: 0, y: 0 });
         }
@@ -195,7 +218,7 @@ export default function Quiz() {
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [showImageModal, imageZoom, imagePosition, isDragging]);
+  }, [showImageModal, imageZoom, imagePosition, isDragging, dragStart, initialPosition]);
 
   // Dynamic font sizing for question
   useEffect(() => {
@@ -645,13 +668,14 @@ export default function Quiz() {
               setImageZoom(1);
               setImagePosition({ x: 0, y: 0 });
             }}
-            className="absolute top-6 left-6 z-10 p-2.5 rounded-full bg-white/5 hover:bg-white/15 transition-all text-white/60 hover:text-white backdrop-blur-sm border border-white/5"
+            className="back-arrow-button absolute top-6 left-6 z-10 p-2.5 rounded-full bg-white/5 hover:bg-white/15 transition-all text-white/60 hover:text-white backdrop-blur-sm border border-white/5"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           
           {/* Image Container */}
           <div 
+            id="image-modal-container"
             className="max-w-[90vw] max-h-[85vh] flex items-center justify-center p-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -674,7 +698,7 @@ export default function Quiz() {
           
           {/* Zoom Slider - Sleek Mobile Version */}
           {window.innerWidth < 768 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] max-w-sm px-3 py-2 rounded-xl bg-white/5 backdrop-blur-sm border border-white/5">
+            <div className="zoom-slider-container absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] max-w-sm px-3 py-2 rounded-xl bg-white/5 backdrop-blur-sm border border-white/5">
               <div className="flex items-center gap-2.5">
                 <ZoomOut className="w-3.5 h-3.5 mb-2 text-white/30 flex-shrink-0" />
                 
