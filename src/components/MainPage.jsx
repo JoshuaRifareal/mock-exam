@@ -70,19 +70,26 @@ export default function MainPage() {
           .filter(subject => subject && subject.trim() !== '')
       )];
       
+      // If no subjects, set empty distribution
+      if (availableSubjects.length === 0) {
+        setSettingsLocal(prev => ({ ...prev, distribution: {} }));
+        setSubjectToggles({});
+        return;
+      }
+      
       // Equal distribution for all subjects
       const distribution = {};
       const toggles = {};
-      const equalPercent = availableSubjects.length > 0 ? Math.round(100 / availableSubjects.length) : 0;
+      const equalPercent = Math.round(100 / availableSubjects.length);
       
       availableSubjects.forEach(subject => {
         distribution[subject] = equalPercent;
-        toggles[subject] = true; // All ON by default
+        toggles[subject] = false; // All OFF by default (equal distribution)
       });
       
       // Adjust to make total 100%
       const total = Object.values(distribution).reduce((a, b) => a + b, 0);
-      if (total !== 100 && Object.keys(distribution).length > 0) {
+      if (total !== 100) {
         const diff = 100 - total;
         distribution[availableSubjects[0]] += diff;
       }
@@ -406,10 +413,10 @@ export default function MainPage() {
     
     setSettingsLocal(prev => ({ ...prev, distribution }));
     
-    // Reset all toggles to ON
+    // Reset all toggles to OFF
     const toggles = {};
     subjects.forEach(s => {
-      toggles[s] = true;
+      toggles[s] = false;
     });
     setSubjectToggles(toggles);
   };
@@ -896,7 +903,7 @@ export default function MainPage() {
                 Reset
               </button>
             </div>
-            <div className="flex-1 flex flex-col justify-center gap-3 overflow-y-auto">
+            <div className="flex-1 flex flex-col justify-center gap-3 overflow-y-visible">
               {Object.keys(settings.distribution).length === 0 ? (
                 <div className="text-center text-white/40 text-sm py-8">
                   <p>No subjects available</p>
@@ -967,7 +974,7 @@ export default function MainPage() {
           }`}
         >
           <span className="relative z-10 flex items-center justify-center gap-2">
-            {allQuestions.length > 0 ? '🚀 Start Quiz' : 'No Questions Available'}
+            {allQuestions.length > 0 ? 'Let\'s go!' : 'No Questions Available'}
           </span>
           {allQuestions.length > 0 && (
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent shimmer" />
