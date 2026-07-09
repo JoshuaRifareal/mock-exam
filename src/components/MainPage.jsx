@@ -30,6 +30,9 @@ export default function MainPage() {
     distribution: {},
   });
 
+  // Subject toggles state
+  const [subjectToggles, setSubjectToggles] = useState({});
+
   // Auto-start quiz from retry button
   useEffect(() => {
     const autoStart = sessionStorage.getItem('autoStartQuiz');
@@ -67,44 +70,25 @@ export default function MainPage() {
           .filter(subject => subject && subject.trim() !== '')
       )];
       
-      const defaultDistribution = {
-        'Sanitation, Plumbing Design, and Installation': 40,
-        'Practical Problems and Experiences': 40,
-        'Plumbing Arithmetic': 10,
-        'Plumbing Code': 10,
-      };
-      
+      // Equal distribution for all subjects
       const distribution = {};
-      let total = 0;
+      const toggles = {};
+      const equalPercent = availableSubjects.length > 0 ? Math.round(100 / availableSubjects.length) : 0;
       
       availableSubjects.forEach(subject => {
-        if (defaultDistribution[subject] !== undefined) {
-          distribution[subject] = defaultDistribution[subject];
-          total += defaultDistribution[subject];
-        }
+        distribution[subject] = equalPercent;
+        toggles[subject] = true; // All ON by default
       });
       
-      const remainingSubjects = availableSubjects.filter(s => !distribution[s]);
-      if (remainingSubjects.length > 0) {
-        const remainingPercent = 100 - total;
-        const perSubject = remainingPercent / remainingSubjects.length;
-        remainingSubjects.forEach(subject => {
-          distribution[subject] = Math.round(perSubject);
-        });
+      // Adjust to make total 100%
+      const total = Object.values(distribution).reduce((a, b) => a + b, 0);
+      if (total !== 100 && Object.keys(distribution).length > 0) {
+        const diff = 100 - total;
+        distribution[availableSubjects[0]] += diff;
       }
       
-      if (Object.keys(distribution).length === 0) {
-        setSettingsLocal(prev => ({ ...prev, distribution: {} }));
-      } else {
-        const currentTotal = Object.values(distribution).reduce((a, b) => a + b, 0);
-        if (currentTotal !== 100) {
-          const factor = 100 / currentTotal;
-          Object.keys(distribution).forEach(key => {
-            distribution[key] = Math.round(distribution[key] * factor);
-          });
-        }
-        setSettingsLocal(prev => ({ ...prev, distribution }));
-      }
+      setSettingsLocal(prev => ({ ...prev, distribution }));
+      setSubjectToggles(toggles);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -198,6 +182,55 @@ export default function MainPage() {
         accuracy,
       };
     }).sort((a, b) => b.accuracy - a.accuracy);
+  };
+
+  // Handle subject toggle
+  const handleSubjectToggle = (subject) => {
+    const subjects = Object.keys(settings.distribution);
+    const currentState = subjectToggles[subject] || false;
+    
+    // Toggle the selected subject
+    const newState = !currentState;
+    const updatedToggles = { ...subjectToggles, [subject]: newState };
+    
+    // Count how many are ON
+    const onSubjects = subjects.filter(s => updatedToggles[s]);
+    
+    // If all are OFF, treat as all ON (equal distribution)
+    if (onSubjects.length === 0) {
+      const equalPercent = Math.round(100 / subjects.length);
+      const newDistribution = {};
+      subjects.forEach(s => {
+        newDistribution[s] = equalPercent;
+      });
+      // Adjust to make total 100%
+      const total = Object.values(newDistribution).reduce((a, b) => a + b, 0);
+      if (total !== 100) {
+        const diff = 100 - total;
+        newDistribution[subjects[0]] += diff;
+      }
+      setSettingsLocal({ ...settings, distribution: newDistribution });
+      setSubjectToggles(updatedToggles);
+      return;
+    }
+    
+    // Distribute 100% among ON subjects
+    const percentPerSubject = Math.round(100 / onSubjects.length);
+    const newDistribution = {};
+    subjects.forEach(s => {
+      newDistribution[s] = updatedToggles[s] ? percentPerSubject : 0;
+    });
+    
+    // Adjust to make total 100%
+    const total = Object.values(newDistribution).reduce((a, b) => a + b, 0);
+    if (total !== 100) {
+      const diff = 100 - total;
+      const firstOn = onSubjects[0];
+      newDistribution[firstOn] += diff;
+    }
+    
+    setSettingsLocal({ ...settings, distribution: newDistribution });
+    setSubjectToggles(updatedToggles);
   };
 
   const selectQuestions = (questions, settings) => {
@@ -355,49 +388,30 @@ export default function MainPage() {
   };
 
   const resetDistribution = () => {
-    const availableSubjects = [...new Set(
-      allQuestions
-        .map(q => q.subject)
-        .filter(subject => subject && subject.trim() !== '')
-    )];
+    const subjects = Object.keys(settings.distribution);
+    if (subjects.length === 0) return;
     
-    const defaultDistribution = {
-      'Sanitation, Plumbing Design, and Installation': 40,
-      'Practical Problems and Experiences': 40,
-      'Plumbing Arithmetic': 10,
-      'Plumbing Code': 10,
-    };
-    
+    const equalPercent = Math.round(100 / subjects.length);
     const distribution = {};
-    let total = 0;
-    
-    availableSubjects.forEach(subject => {
-      if (defaultDistribution[subject] !== undefined) {
-        distribution[subject] = defaultDistribution[subject];
-        total += defaultDistribution[subject];
-      }
+    subjects.forEach(subject => {
+      distribution[subject] = equalPercent;
     });
     
-    const remainingSubjects = availableSubjects.filter(s => !distribution[s]);
-    if (remainingSubjects.length > 0) {
-      const remainingPercent = 100 - total;
-      const perSubject = remainingPercent / remainingSubjects.length;
-      remainingSubjects.forEach(subject => {
-        distribution[subject] = Math.round(perSubject);
-      });
-    }
-    
-    if (Object.keys(distribution).length > 0) {
-      const currentTotal = Object.values(distribution).reduce((a, b) => a + b, 0);
-      if (currentTotal !== 100) {
-        const factor = 100 / currentTotal;
-        Object.keys(distribution).forEach(key => {
-          distribution[key] = Math.round(distribution[key] * factor);
-        });
-      }
+    // Adjust to make total 100%
+    const total = Object.values(distribution).reduce((a, b) => a + b, 0);
+    if (total !== 100) {
+      const diff = 100 - total;
+      distribution[subjects[0]] += diff;
     }
     
     setSettingsLocal(prev => ({ ...prev, distribution }));
+    
+    // Reset all toggles to ON
+    const toggles = {};
+    subjects.forEach(s => {
+      toggles[s] = true;
+    });
+    setSubjectToggles(toggles);
   };
 
   const handleStartQuiz = () => {
@@ -557,7 +571,7 @@ export default function MainPage() {
                 <BookOpen className="w-5 h-5 text-blue-400" />
               </div>
               <div>
-                <p className="text-xs text-white/40">Total Questions</p>
+                <p className="text-xs text-white/40">Questions</p>
                 <p className="text-xl font-bold text-white">{allQuestions.length}</p>
               </div>
 
@@ -627,7 +641,7 @@ export default function MainPage() {
                   </div>
                   <div className="flex justify-between mt-0.5">
                     <span className="text-[10px] text-white/30">
-                      {subject.correct}/{subject.attempted} success ratio
+                      {subject.correct}/{subject.attempted} attempts
                     </span>
                     <span className="text-[10px] text-white/20">
                       {subject.accuracy >= 70 ? '🟢' :
@@ -661,6 +675,9 @@ export default function MainPage() {
                       {subject.name}
                     </span>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-sm text-white/50">
+                        {subject.attempted}/{subject.total}
+                      </span>
                       <span className={`text-sm font-bold ${
                         subject.isComplete ? 'text-green-400' :
                         subject.percentage >= 50 ? 'text-yellow-400' :
@@ -685,14 +702,9 @@ export default function MainPage() {
                       />
                     </div>
                   </div>
-                  <div className="flex justify-between pt-0 mt-0">
-                    <span>
-                      <span className="text-[10px] text-white/100">
-                        {subject.attempted}/{subject.total}
-                      </span>
-                      <span className="text-[10px] text-white/30 pl-3">
-                        {subject.isComplete ? 'Answered all items' : `${subject.total - subject.attempted} unanswered`}
-                      </span>
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[10px] text-white/30">
+                      {subject.isComplete ? '✅ Complete' : `${subject.total - subject.attempted} remaining`}
                     </span>
                     <span className="text-[10px] text-white/20">
                       {subject.isComplete ? '🟢' :
@@ -721,7 +733,7 @@ export default function MainPage() {
             </h2>
 
             <div className="space-y-4">
-              {/* Questions Slider */}
+              {/* Questions Slider - 10 to 100, step 10 */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="text-xs text-white/60 flex items-center gap-2">
@@ -733,21 +745,31 @@ export default function MainPage() {
                 <div className="relative">
                   <input
                     type="range"
-                    min="5"
-                    max="50"
-                    step="5"
+                    min="10"
+                    max="100"
+                    step="10"
                     value={settings.numQuestions}
                     onChange={(e) => setSettingsLocal({ ...settings, numQuestions: parseInt(e.target.value) })}
                     className="w-full slider-thick"
                   />
                   <div className="flex justify-between px-0.5 mt-0.5">
-                    {[5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map((val) => (
-                      <div key={val} className="flex flex-col items-center">
-                        <div className="w-0.5 h-1.5 bg-white/20 rounded-full" />
-                        <span className="text-[6px] text-white/20 mt-0.5">{val}</span>
-                      </div>
-                    ))}
+                    {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((val) => {
+                      const isDisabled = allQuestions.length > 0 && val > allQuestions.length;
+                      return (
+                        <div key={val} className="flex flex-col items-center">
+                          <div className={`w-0.5 h-1.5 rounded-full ${isDisabled ? 'bg-white/5' : 'bg-white/20'}`} />
+                          <span className={`text-[6px] mt-0.5 ${isDisabled ? 'text-white/5' : 'text-white/20'}`}>
+                            {val}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
+                  {allQuestions.length > 0 && settings.numQuestions > allQuestions.length && (
+                    <div className="mt-1 text-[10px] text-amber-400/80">
+                      ⚠️ Only {allQuestions.length} questions available
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -882,35 +904,51 @@ export default function MainPage() {
                 </div>
               ) : (
                 <>
-                  {Object.entries(settings.distribution).map(([subject, value]) => (
-                    <div key={subject} className="flex-shrink-0">
-                      <div className="flex justify-between items-center mb-1.5">
-                        <span className="text-xs text-white/70">{subject}</span>
-                        <span className="text-xs font-bold text-white">{value}%</span>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="5"
-                          value={value}
-                          onChange={(e) => handleDistributionChange(subject, parseInt(e.target.value))}
-                          className="w-full slider-thick"
-                        />
-                        <div className="flex justify-between px-0.5 mt-0.5">
-                          {[0, 25, 50, 75, 100].map((val) => (
-                            <div key={val} className="flex flex-col items-center">
-                              <div className="w-0.5 h-1 bg-white/10 rounded-full" />
-                              <span className="text-[5px] text-white/10 mt-0.5">{val}</span>
-                            </div>
-                          ))}
+                  {Object.entries(settings.distribution).map(([subject, value]) => {
+                    const isOn = subjectToggles[subject] !== false;
+                    return (
+                      <div key={subject} className="flex-shrink-0">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs text-white/70 truncate flex-1 mr-2">{subject}</span>
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <span className="text-xs font-bold text-white min-w-[30px] text-right">{value}%</span>
+                            {/* Toggle Button */}
+                            <button
+                              onClick={() => handleSubjectToggle(subject)}
+                              className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${
+                                isOn ? 'bg-gradient-to-r from-blue-500 to-purple-500' : 'bg-white/10'
+                              }`}
+                            >
+                              <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow-lg transition-transform ${
+                                isOn ? 'translate-x-4' : 'translate-x-0.5'
+                              }`} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={value}
+                            onChange={(e) => handleDistributionChange(subject, parseInt(e.target.value))}
+                            className="w-full slider-thick"
+                          />
+                          <div className="flex justify-between px-0.5 mt-0.5">
+                            {[0, 25, 50, 75, 100].map((val) => (
+                              <div key={val} className="flex flex-col items-center">
+                                <div className="w-0.5 h-1 bg-white/10 rounded-full" />
+                                <span className="text-[5px] text-white/10 mt-0.5">{val}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <p className="text-[10px] text-white/30 text-center mt-1 flex-shrink-0">
-                    Adjust sliders to control distribution (total = 100%)
+                    Adjust distribution (total = 100%)
                   </p>
                 </>
               )}
@@ -929,7 +967,7 @@ export default function MainPage() {
           }`}
         >
           <span className="relative z-10 flex items-center justify-center gap-2">
-            {allQuestions.length > 0 ? 'Start' : 'No Questions Available'}
+            {allQuestions.length > 0 ? '🚀 Start Quiz' : 'No Questions Available'}
           </span>
           {allQuestions.length > 0 && (
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent shimmer" />
